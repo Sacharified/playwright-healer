@@ -1,0 +1,26 @@
+{
+  "name": "playwright-healer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Auto-heal flaky Playwright tests in GitHub Actions via Claude Agent SDK + Playwright MCP",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests in Phase 1 (see .github/workflows/phase1-self-test.yml)'"
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1",
+    "@actions/github": "9.1.1",
+    "@anthropic-ai/claude-agent-sdk": "0.2.119",
+    "@playwright/mcp": "0.0.70",
+    "tsx": "^4.21.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5.9"
+  }
+}
