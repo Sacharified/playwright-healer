@@ -1,0 +1,179 @@
+name: Phase 1 Self-Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read          # required by Job B to call gh api on Job A's log
+
+jobs:
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCENARIO 1 (SEC-06 / ROADMAP SC#3 / T-1-06) — Canary-mask TWO-JOB pattern.
+  #   Job A invokes the action with the inline canary API key.
+  #   Job B (needs: A, if: always()) fetches Job A's finalized log via gh api
+  #   and asserts the raw canary string does NOT appear.
+  # Per PATTERNS Pattern 13, a single-job post-step would race the log API.
+  # ──────────────────────────────────────────────────────────────────
+
+  self-test-masking:
+    name: 'Self-test — mask canary secret'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified at execution
+        with:
+          persist-credentials: false
+
+      - name: Invoke action with dry-run and inline canary API key
+        uses: ./
+        with:
+          mode: dry-run
+          anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          healer-token: 'test-canary-healer-token'
+          github-token: ${{ github.token }}
+
+  verify-log-mask:
+    name: 'Verify canary was masked in previous job log'
+    runs-on: ubuntu-latest
+    needs: self-test-masking
+    if: always()
+    steps:
+      - name: Fetch Job A log and assert canary is absent
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Locate Job A by its literal job name — MUST match the `name:` on self-test-masking above.
+          JOB_ID=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+            --jq '.jobs[] | select(.name=="Self-test — mask canary secret") | .id')
+          if [ -z "$JOB_ID" ]; then
+            echo "::error::Could not find job id for self-test-masking"
+            echo "--- Available jobs in this run: ---"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" --jq '.jobs[] | .name'
+            exit 1
+          fi
+          echo "Job A id: $JOB_ID"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" > job-a.log
+          if grep -q 'test-canary-DO-NOT-USE-REAL-KEY' job-a.log; then
+            echo "::error::Canary appeared in the log — masking FAILED"
+            echo "--- Offending lines: ---"
+            grep -n 'test-canary-DO-NOT-USE-REAL-KEY' job-a.log | head -20
+            exit 1
+          fi
+          echo "OK: canary was masked (raw value not found in Job A log)"
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCENARIO 2 (CFG-05 / ROADMAP SC#4 / D-06) — Invalid mode fails with Zod error.
+  # ──────────────────────────────────────────────────────────────────
+
+  self-test-invalid-mode:
+    name: 'Self-test — invalid mode fails fast'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Invoke with mode=banana (expected to fail)
+        id: run
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: banana
+          anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          healer-token: 'test-canary-healer-token'
+          github-token: ${{ github.token }}
+
+      - name: Assert the invocation failed (exit code 1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.run.outcome }}" != "failure" ]; then
+            echo "::error::Expected failure for mode=banana, got outcome=${{ steps.run.outcome }}"
+            exit 1
+          fi
+          echo "OK: invalid mode produced failure outcome"
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCENARIO 3 (CFG-02 / SC#4) — Missing/empty anthropic-api-key fails cleanly.
+  # ──────────────────────────────────────────────────────────────────
+
+  self-test-missing-api-key:
+    name: 'Self-test — missing api key fails cleanly'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Invoke without anthropic-api-key (empty value)
+        id: run
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: dry-run
+          anthropic-api-key: ''
+          healer-token: 'test-canary-healer-token'
+          github-token: ${{ github.token }}
+
+      - name: Assert failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.run.outcome }}" != "failure" ]; then
+            echo "::error::Expected failure for empty anthropic-api-key, got outcome=${{ steps.run.outcome }}"
+            exit 1
+          fi
+          echo "OK: empty api key produced failure outcome"
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCENARIO 4 (CFG-05 happy path) — dry-run exits 0 and writes redacted summary.
+  # Artifact step also cross-checks the summary file has no canary leak
+  # (defense-in-depth on top of Scenario 1's log grep).
+  # ──────────────────────────────────────────────────────────────────
+
+  self-test-dry-run:
+    name: 'Self-test — dry-run succeeds and redacts secrets in summary'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Invoke with mode=dry-run and canary api key
+        id: run
+        uses: ./
+        with:
+          mode: dry-run
+          anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          healer-token: 'test-canary-healer-token'
+          github-token: ${{ github.token }}
+
+      - name: Assert success and summary file present without canary leak
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.run.outcome }}" != "success" ]; then
+            echo "::error::Expected success for dry-run, got outcome=${{ steps.run.outcome }}"
+            exit 1
+          fi
+          # $GITHUB_STEP_SUMMARY accumulates across steps in the same job.
+          # At this point the previous step populated it.
+          if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            if grep -q 'test-canary-DO-NOT-USE-REAL-KEY' "$GITHUB_STEP_SUMMARY"; then
+              echo "::error::Canary appeared in \$GITHUB_STEP_SUMMARY — dry-run redaction FAILED"
+              exit 1
+            fi
+            if ! grep -q 'dry-run summary' "$GITHUB_STEP_SUMMARY"; then
+              echo "::error::Expected 'dry-run summary' marker in \$GITHUB_STEP_SUMMARY — dispatcher did not write the redacted output"
+              exit 1
+            fi
+          else
+            echo "::error::\$GITHUB_STEP_SUMMARY was empty — runDryRun helper regression; Scenario 4 expects a redacted summary dump"
+            exit 1
+          fi
+          echo "OK: dry-run success + summary redaction verified"
