@@ -1094,37 +1094,39 @@ These are load-bearing:
 
 All version numbers in §Standard Stack are `[VERIFIED: npm registry 2026-04-24]` except where tagged otherwise. No significant `[ASSUMED]` claims affect the Phase 1 plan.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All six questions are resolved below. Each `RESOLVED:` line is the locked decision the plans must follow.
 
 1. **Whether `npx tsx src/index.ts` goes in `action.yml` as a single step, or install and run split into distinct steps**
    - What we know: SC#1 states "`npm ci --production` as the first step" — implies at least two steps (install + run) so the first-step text is grep-verifiable.
    - What's unclear: Whether to also add a `setup-node` step between install and run for Node 24 determinism.
-   - Recommendation: **Three steps — `setup-node`, `npm ci --production`, `npx tsx src/index.ts`**. But SC#1 says "first step." Either (a) put `setup-node` LAST and `npm ci` first (weird), or (b) interpret SC#1 as "first of the meaningful steps" — the planner should flag this to the discuss phase if there's doubt. My recommendation: `npm ci --production` as step 1, `setup-node` as step 2, `npx tsx` as step 3. Node 24 will become ubuntu-latest default on 2026-06-02 so `setup-node` is redundant shortly — but ordering safeguards the cutover window.
+   - RESOLVED: Three-step composite — step 1 `npm ci --production`, step 2 `actions/setup-node` (SHA-pinned to Node 24), step 3 `npx tsx src/index.ts`. SC#1's "first step" is honored literally. Node 24 becomes ubuntu-latest default 2026-06-02 so `setup-node` is redundant shortly — ordering safeguards the cutover window.
 
 2. **Whether the SEC-07 HTTP-client grep allowlist lives inline in the workflow or in a separate file**
    - What we know: Phase 1's allowlist is empty. Phase 2/3 will need to extend it.
    - What's unclear: Single source of truth for the allowlist.
-   - Recommendation: **Inline in the workflow for Phase 1; promote to a separate `.github/sec-allowlist.txt` file when Phase 2 first needs to extend it.** Don't prematurely create a file for an empty list.
+   - RESOLVED: Inline in `security-lint.yml` for Phase 1; promote to `.github/sec-allowlist.txt` when Phase 2 first needs to extend it. No premature file for an empty list.
 
 3. **Whether the security-lint snapshot-diff job tolerates formatting differences**
    - What we know: JSON has semantic equality that differs from byte equality.
    - What's unclear: How to serialize TS constants for diff.
-   - Recommendation: **Use the canonical formatter from Pattern 4** (`JSON.stringify(obj, Object.keys(obj).sort(), 2) + '\n'`). CI reads `.planning/security-contract.snapshot.json`, reads the TS constants via `tsx` + a small helper script, serializes both with the canonical formatter, and `diff`s the resulting strings. No semantic-equality heuristic needed.
+   - RESOLVED: Use the canonical formatter from Pattern 4 — `JSON.stringify(obj, Object.keys(obj).sort(), 2) + '\n'`. CI reads `.planning/security-contract.snapshot.json`, reads the TS constants via `tsx` + a small helper script, serializes both with the canonical formatter, and `diff`s the resulting strings. No semantic-equality heuristic needed.
 
 4. **Whether the Phase 1 self-test workflow runs on every push or only on security-sensitive paths**
    - What we know: Phase 1 is small enough that full-workflow-every-push is affordable.
    - What's unclear: Whether path-filter micro-optimization is worth the complexity.
-   - Recommendation: **Run both workflows on every push and every pull_request for Phase 1**. The workflows are fast (no browser, no API calls, ~30s total). Path filters can be added later if CI cost becomes a concern.
+   - RESOLVED: Run both `security-lint.yml` and `phase1-self-test.yml` on every push and every pull_request for Phase 1. Workflows are ~30s total; path filters can be added later if CI cost becomes a concern.
 
 5. **Whether `package-lock.json` should be generated with `npm install` or `npm ci`-replay from a seed**
    - What we know: `npm ci --production` requires `package-lock.json` to exist and match `package.json`.
    - What's unclear: Nothing material — standard workflow is `npm install` once locally, commit the lockfile, then `npm ci` in CI.
-   - Recommendation: **Run `npm install` once when creating `package.json`; commit both `package.json` and `package-lock.json`. Subsequent dep changes go through `npm install <pkg> --save`.** Standard practice.
+   - RESOLVED: Run `npm install` once when creating `package.json`; commit both `package.json` and `package-lock.json`. Subsequent dep changes go through `npm install <pkg> --save`.
 
 6. **(Bonus) Should the planner consume `@anthropic-ai/claude-agent-sdk` + `@playwright/mcp` in Phase 1's `package.json`, or defer to Phase 3?**
    - What we know: STATE.md lists "Native SDK binary discovery unverified" as a Phase 1 blocker. If the SDK is in `package.json`, the self-test's `npm ci --production` call discharges this blocker at zero marginal cost.
    - What's unclear: Whether early inclusion violates a YAGNI principle.
-   - Recommendation: **Include them in Phase 1**. The cost is ~30MB of disk space during self-test and zero code imports. The benefit is a smoke test that Phase 3 would otherwise need to redo. This is CONTEXT.md Claude's discretion.
+   - RESOLVED: Include both in Phase 1's `package.json`. Cost is ~30MB during self-test with zero code imports; benefit is discharging the STATE.md native-binary blocker via the existing self-test install. This is CONTEXT.md Claude's discretion.
 
 ## State of the Art
 
