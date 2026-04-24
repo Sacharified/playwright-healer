@@ -30,7 +30,8 @@ jobs:
         uses: ./
         with:
           mode: dry-run
-          anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          provider: anthropic
+          api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
           healer-token: 'test-canary-healer-token'
           github-token: ${{ github.token }}
 
@@ -84,7 +85,8 @@ jobs:
         uses: ./
         with:
           mode: banana
-          anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          provider: anthropic
+          api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
           healer-token: 'test-canary-healer-token'
           github-token: ${{ github.token }}
 
@@ -99,24 +101,27 @@ jobs:
           echo "OK: invalid mode produced failure outcome"
 
   # ──────────────────────────────────────────────────────────────────
-  # SCENARIO 3 (CFG-02 / SC#4) — Missing/empty anthropic-api-key fails cleanly.
+  # SCENARIO 3 (CFG-02 / SC#4) — Missing/empty api-key fails cleanly when
+  # provider is anthropic (Zod superRefine). This is the anthropic side of
+  # the per-provider api-key enforcement pair with Scenario 5.
   # ──────────────────────────────────────────────────────────────────
 
   self-test-missing-api-key:
-    name: 'Self-test — missing api key fails cleanly'
+    name: 'Self-test — missing api key fails cleanly (anthropic)'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
 
-      - name: Invoke without anthropic-api-key (empty value)
+      - name: Invoke with empty api-key + provider=anthropic (expected to fail)
         id: run
         continue-on-error: true
         uses: ./
         with:
           mode: dry-run
-          anthropic-api-key: ''
+          provider: anthropic
+          api-key: ''
           healer-token: 'test-canary-healer-token'
           github-token: ${{ github.token }}
 
@@ -125,10 +130,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "failure" ]; then
-            echo "::error::Expected failure for empty anthropic-api-key, got outcome=${{ steps.run.outcome }}"
+            echo "::error::Expected failure for empty api-key with provider=anthropic, got outcome=${{ steps.run.outcome }}"
             exit 1
           fi
-          echo "OK: empty api key produced failure outcome"
+          echo "OK: empty api-key + provider=anthropic produced failure outcome"
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 4 (CFG-05 happy path) — dry-run exits 0 and writes redacted summary.
@@ -149,7 +154,10 @@ jobs:
         uses: ./
         with:
           mode: dry-run
-          anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          provider: anthropic
+          model: ''
+          api-endpoint: ''
+          api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
           healer-token: 'test-canary-healer-token'
           github-token: ${{ github.token }}
 
@@ -172,8 +180,65 @@ jobs:
               echo "::error::Expected 'dry-run summary' marker in \$GITHUB_STEP_SUMMARY — dispatcher did not write the redacted output"
               exit 1
             fi
+            if ! grep -q '| `provider` | anthropic |' "$GITHUB_STEP_SUMMARY"; then
+              echo "::error::Expected 'provider | anthropic' row in \$GITHUB_STEP_SUMMARY — new 01.1 provider input not reaching dry-run output"
+              exit 1
+            fi
           else
             echo "::error::\$GITHUB_STEP_SUMMARY was empty — runDryRun helper regression; Scenario 4 expects a redacted summary dump"
             exit 1
           fi
           echo "OK: dry-run success + summary redaction verified"
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCENARIO 5 (01.1 — Ollama empty-key dry-run path) — load-bearing test
+  # for the `required: true` removal on api-key. With provider=ollama,
+  # empty api-key MUST NOT trigger the Zod superRefine issue, and the
+  # dispatcher MUST exit 0. Also proves the new provider/api-endpoint
+  # inputs reach the dry-run summary output.
+  # ──────────────────────────────────────────────────────────────────
+
+  self-test-ollama-empty-key:
+    name: 'Self-test — ollama empty api key succeeds (dry-run)'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Invoke with provider=ollama, empty api-key, localhost endpoint
+        id: run
+        uses: ./
+        with:
+          mode: dry-run
+          provider: ollama
+          api-key: ''
+          api-endpoint: 'http://localhost:11434'
+          healer-token: 'test-canary-healer-token'
+          github-token: ${{ github.token }}
+
+      - name: Assert success + summary reflects ollama provider + endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.run.outcome }}" != "success" ]; then
+            echo "::error::Expected success for provider=ollama + empty api-key, got outcome=${{ steps.run.outcome }}"
+            exit 1
+          fi
+          if [ ! -s "$GITHUB_STEP_SUMMARY" ]; then
+            echo "::error::\$GITHUB_STEP_SUMMARY was empty"
+            exit 1
+          fi
+          if ! grep -q '| `provider` | ollama |' "$GITHUB_STEP_SUMMARY"; then
+            echo "::error::Expected 'provider | ollama' row in summary"
+            exit 1
+          fi
+          if ! grep -q '| `api-endpoint` | http://localhost:11434 |' "$GITHUB_STEP_SUMMARY"; then
+            echo "::error::Expected api-endpoint row with localhost:11434 in summary"
+            exit 1
+          fi
+          if ! grep -q '(empty — allowed for ollama)' "$GITHUB_STEP_SUMMARY"; then
+            echo "::error::Expected 'empty — allowed for ollama' api-key cell — dispatcher did not detect the ollama-exception path"
+            exit 1
+          fi
+          echo "OK: ollama empty-key dry-run path verified"
