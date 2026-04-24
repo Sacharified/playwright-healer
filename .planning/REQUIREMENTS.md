@@ -166,18 +166,86 @@ Explicitly excluded. Documented so they don't creep back in.
 
 ## Traceability
 
-Populated by roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| *(filled during roadmap)* | — | Pending |
+| PKG-01 | Phase 1 | Pending |
+| PKG-02 | Phase 1 | Pending |
+| PKG-03 | Phase 6 | Pending |
+| PKG-04 | Phase 6 | Pending |
+| PKG-05 | Phase 6 | Pending |
+| CFG-01 | Phase 1 | Pending |
+| CFG-02 | Phase 1 | Pending |
+| CFG-03 | Phase 2 | Pending |
+| CFG-04 | Phase 3 | Pending |
+| CFG-05 | Phase 1 | Pending |
+| CFG-06 | Phase 2 | Pending |
+| CFG-07 | Phase 2 | Pending |
+| ING-01 | Phase 2 | Pending |
+| ING-02 | Phase 2 | Pending |
+| ING-03 | Phase 2 | Pending |
+| ING-04 | Phase 2 | Pending |
+| STA-01 | Phase 2 | Pending |
+| STA-02 | Phase 2 | Pending |
+| STA-03 | Phase 2 | Pending |
+| STA-04 | Phase 2 | Pending |
+| STA-05 | Phase 2 | Pending |
+| DET-01 | Phase 2 | Pending |
+| DET-02 | Phase 2 | Pending |
+| DET-03 | Phase 2 | Pending |
+| DET-04 | Phase 2 | Pending |
+| DET-05 | Phase 4 | Pending |
+| DET-06 | Phase 4 | Pending |
+| DET-07 | Phase 4 | Pending |
+| SEC-01 | Phase 1 | Pending |
+| SEC-02 | Phase 1 | Pending |
+| SEC-03 | Phase 3 | Pending |
+| SEC-04 | Phase 3 | Pending |
+| SEC-05 | Phase 2 | Pending |
+| SEC-06 | Phase 1 | Pending |
+| SEC-07 | Phase 1 | Pending |
+| HEA-01 | Phase 3 | Pending |
+| HEA-02 | Phase 3 | Pending |
+| HEA-03 | Phase 3 | Pending |
+| HEA-04 | Phase 3 | Pending |
+| HEA-05 | Phase 3 | Pending |
+| HEA-06 | Phase 3 | Pending |
+| FIX-01 | Phase 3 | Pending |
+| FIX-02 | Phase 3 | Pending |
+| FIX-03 | Phase 3 | Pending |
+| FIX-04 | Phase 3 | Pending |
+| FIX-05 | Phase 3 | Pending |
+| FIX-06 | Phase 3 | Pending |
+| FIX-07 | Phase 4 | Pending |
+| FIX-08 | Phase 3 | Pending |
+| VAL-01 | Phase 3 | Pending |
+| VAL-02 | Phase 3 | Pending |
+| VAL-03 | Phase 3 | Pending |
+| VAL-04 | Phase 3 | Pending |
+| VAL-05 | Phase 3 | Pending |
+| PRI-01 | Phase 3 | Pending |
+| PRI-02 | Phase 3 | Pending |
+| PRI-03 | Phase 3 | Pending |
+| PRI-04 | Phase 4 | Pending |
+| PRI-05 | Phase 3 | Pending |
+| PRI-06 | Phase 3 | Pending |
+| MRG-01 | Phase 5 | Pending |
+| MRG-02 | Phase 5 | Pending |
+| MRG-03 | Phase 5 | Pending |
+| MRG-04 | Phase 5 | Pending |
+| DOC-01 | Phase 6 | Pending |
+| DOC-02 | Phase 6 | Pending |
+| DOC-03 | Phase 6 | Pending |
+| DOC-04 | Phase 6 | Pending |
+| DOC-05 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: **67** total (across 11 categories)
-- Mapped to phases: — (filled during roadmap)
-- Unmapped: — (filled during roadmap)
+- v1 requirements: **69** total (across 12 categories)
+- Mapped to phases: **69** (100%)
+- Unmapped: **0**
+
+Note: The metadata block previously stated "67 total (across 11 categories)" — the actual count is 69 across 12 categories (PKG, CFG, ING, STA, DET, SEC, HEA, FIX, VAL, PRI, MRG, DOC). Discrepancy resolved by direct count.
 
 ---
 
 *Requirements defined: 2026-04-24*
-*Last updated: 2026-04-24 after initial definition*
+*Last updated: 2026-04-24 — traceability table populated during roadmap creation*
