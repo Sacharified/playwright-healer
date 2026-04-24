@@ -1,0 +1,173 @@
+name: Security Lint
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  security-lint:
+    name: D-14 enforcement — 4 checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with full history for trailer-check git log range)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified at execution per D-20
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # ──────────────────────────────────────────────────────────────────
+      # CHECK 1 — SEC-02 (T-1-02): No `pull_request_target` trigger anywhere
+      # Pattern 11. Excludes docs where the string legitimately appears in prose.
+      # ──────────────────────────────────────────────────────────────────
+      - name: 'Check 1: No pull_request_target trigger (SEC-02)'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MATCHES=$(git grep -l 'pull_request_target' -- \
+            ':(exclude).planning/' \
+            ':(exclude)CLAUDE.md' \
+            ':(exclude)README.md' \
+            ':(exclude).github/workflows/security-lint.yml' \
+            ':(exclude)src/shared/security-contract.ts' \
+            || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::pull_request_target found in non-allowlisted files:"
+            echo "$MATCHES" | sed 's/^/  /'
+            exit 1
+          fi
+          echo "OK: no pull_request_target triggers found"
+
+      # ──────────────────────────────────────────────────────────────────
+      # CHECK 2 — SEC-01 (T-1-01): Every actions/checkout has persist-credentials: false
+      # Pattern 10. yq-parsed (not grep) — grep false-negatives on multi-line YAML.
+      # ──────────────────────────────────────────────────────────────────
+      - name: 'Check 2: actions/checkout has persist-credentials: false (SEC-01)'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAIL=0
+          # Find all candidate files: action.yml + any workflow yml/yaml
+          FILES=""
+          [ -f action.yml ] && FILES="action.yml"
+          if [ -d .github/workflows ]; then
+            FILES="$FILES $(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \))"
+          fi
+          for f in $FILES; do
+            # Extract every map node that has a `uses:` matching actions/checkout
+            COUNT=$(yq eval -o=json '
+              [.. | select(tag == "!!map") | select(has("uses")) |
+               select(.uses | test("^actions/checkout(@|$)"))] | length
+            ' "$f" 2>/dev/null || echo "0")
+            if [ "${COUNT:-0}" -eq 0 ]; then
+              continue
+            fi
+            # For each such map, check with.persist-credentials == false
+            BAD=$(yq eval -o=json '
+              [.. | select(tag == "!!map") | select(has("uses")) |
+               select(.uses | test("^actions/checkout(@|$)")) |
+               select((.with."persist-credentials" // "MISSING") != false)] | length
+            ' "$f" 2>/dev/null || echo "0")
+            if [ "${BAD:-0}" -gt 0 ]; then
+              echo "::error file=$f::$BAD actions/checkout step(s) missing 'persist-credentials: false'"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            exit 1
+          fi
+          echo "OK: every actions/checkout has persist-credentials: false"
+
+      # ──────────────────────────────────────────────────────────────────
+      # CHECK 3 — D-13 (T-1-05): Security-contract change requires trailer + snapshot matches TS
+      # Pattern 9. Two-arm check: (a) trailer on any commit touching the contract files,
+      # (b) canonical JSON of TS values matches the snapshot.
+      # ──────────────────────────────────────────────────────────────────
+      - name: 'Check 3a: Security-Contract-Change trailer on contract-touching commits (D-13)'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.base_ref }}"
+            git fetch --no-tags origin "$BASE_REF"
+            RANGE="origin/$BASE_REF...HEAD"
+          else
+            # push trigger — inspect the latest commit only
+            RANGE="HEAD~1..HEAD"
+            # First commit edge case (shallow or initial commit): use a null tree diff
+            if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+              RANGE="$(git hash-object -t tree /dev/null)..HEAD"
+            fi
+          fi
+
+          CHANGED=$(git log "$RANGE" --name-only --pretty=format: \
+            -- src/shared/security-contract.ts .planning/security-contract.snapshot.json \
+            | grep -cv '^$' || true)
+
+          if [ "$CHANGED" -eq 0 ]; then
+            echo "OK: no security-contract changes in range; trailer check skipped"
+            exit 0
+          fi
+
+          TRAILER_COUNT=$(git log "$RANGE" --format='%B' \
+            -- src/shared/security-contract.ts .planning/security-contract.snapshot.json \
+            | grep -c '^Security-Contract-Change: reviewed-by=' || true)
+
+          if [ "$TRAILER_COUNT" -eq 0 ]; then
+            echo "::error::Security contract changed in range $RANGE but no commit has the 'Security-Contract-Change: reviewed-by=<handle>' trailer"
+            exit 1
+          fi
+          echo "OK: trailer present ($TRAILER_COUNT commit(s))"
+
+      - name: 'Check 3b: Snapshot JSON matches TS contract values (D-12 canonical diff)'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Install runtime deps so we can import security-contract.ts via tsx
+          npm ci --production
+
+          # Emit canonical JSON from the TS module using the formatter recipe from RESEARCH Pattern 4
+          npx tsx --eval "
+            import('./src/shared/security-contract.ts').then((m) => {
+              const obj = {
+                allowedOriginTemplate: ['<baseUrl>', 'http://localhost:*'],
+                allowedTools: [...m.ALLOWED_TOOLS].sort(),
+                forbiddenWorkflowTriggers: [...m.FORBIDDEN_WORKFLOW_TRIGGERS].sort(),
+              };
+              const sortKeys = (o) => Array.isArray(o)
+                ? [...o].sort()
+                : typeof o === 'object' && o !== null
+                  ? Object.keys(o).sort().reduce((a, k) => { a[k] = sortKeys(o[k]); return a; }, {})
+                  : o;
+              process.stdout.write(JSON.stringify(sortKeys(obj), null, 2) + '\n');
+            });
+          " > /tmp/contract-from-ts.json
+
+          # Canonicalize the committed snapshot the same way
+          jq -S '.' .planning/security-contract.snapshot.json > /tmp/contract-from-json.canonical.json
+          jq -S '.' /tmp/contract-from-ts.json > /tmp/contract-from-ts.canonical.json
+
+          if ! diff -u /tmp/contract-from-json.canonical.json /tmp/contract-from-ts.canonical.json; then
+            echo "::error::Snapshot JSON does not match TS contract values. Update .planning/security-contract.snapshot.json AND add the 'Security-Contract-Change: reviewed-by=<handle>' trailer to the commit."
+            exit 1
+          fi
+          echo "OK: snapshot matches TS values"
+
+      # ──────────────────────────────────────────────────────────────────
+      # CHECK 4 — SEC-07 (T-1-04): No HTTP client call-sites in src/**
+      # Pattern 12. Phase 1 allowlist is EMPTY. Phases 2/3 will extend the allowlist.
+      # ──────────────────────────────────────────────────────────────────
+      - name: 'Check 4: No HTTP clients in src/** (SEC-07)'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERNS='fetch\(|http\.request\(|https\.request\(|axios|got\(|node-fetch|undici'
+          MATCHES=$(git grep -nE "$PATTERNS" -- 'src/*.ts' 'src/**/*.ts' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::SEC-07 violation: HTTP client call-site found in src/ (Phase 1 allowlist is empty)"
+            echo "$MATCHES" | sed 's/^/  /'
+            exit 1
+          fi
+          echo "OK: no HTTP client call-sites in src/"
