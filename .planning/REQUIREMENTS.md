@@ -11,8 +11,10 @@
 
 ### Packaging & Distribution (PKG)
 
-- [ ] **PKG-01**: The action ships as a composite GitHub Action (`runs.using: composite` in `action.yml`), not a bundled JS action
-- [ ] **PKG-02**: `npm ci --production` runs as the first composite step so the Claude Agent SDK's native binary is installed on the runner (no bundling)
+- [x] **PKG-01
+**: The action ships as a composite GitHub Action (`runs.using: composite` in `action.yml`), not a bundled JS action
+- [x] **PKG-02
+**: `npm ci --production` runs as the first composite step so the Claude Agent SDK's native binary is installed on the runner (no bundling)
 - [ ] **PKG-03**: The repo publishes at least one immutable version tag (`v0.1.0`, `v1`) that consumers can pin in `uses:`
 - [ ] **PKG-04**: The repo includes a `.github/workflows/self-test.yml` that exercises the action against a fixture Playwright repo on `ubuntu-latest` on every push to main
 - [ ] **PKG-05**: Consumers can adopt the action in one PR by copying an example workflow from the repo's README
