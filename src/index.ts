@@ -3,10 +3,14 @@
 // playwright-healer — composite GitHub Action entry point.
 //
 // Startup ordering (D-07) is AUTHORITATIVE:
-//   1. getInput() the three secret inputs
+//   1. getInput() the three secret inputs (api-key may be empty for Ollama
+//      localhost — core.setSecret('') is a documented no-op, so we call it
+//      unconditionally to preserve the "setSecret × 3 before any log line"
+//      invariant with zero branching)
 //   2. setSecret() each one — registers with runner mask BEFORE any log line
-//   3. getInput() the non-secret inputs
-//   4. Zod validation (fail-fast with field-naming error on invalid input)
+//   3. getInput() the non-secret inputs (mode, provider, model, api-endpoint, …)
+//   4. Zod validation (fail-fast with field-naming error on invalid input;
+//      per-provider api-key requirement enforced via superRefine)
 //   5. switch-dispatch on mode: dry-run is self-contained; ingest/heal dynamically
 //      import their stub modules (throw in Phase 1 per D-09)
 //
@@ -15,15 +19,15 @@
 // Actions log.
 
 import * as core from '@actions/core';
-import { getInputSchema, type Config } from './shared/config.js';
+import { getInputSchema, DEFAULT_MODELS, type Config } from './shared/config.js';
 
 async function main(): Promise<void> {
   // ── Phase A: SECRET MASKING (D-07 — must be first, before any log line) ──
-  const anthropicApiKey = core.getInput('anthropic-api-key', { required: true });
-  const healerToken     = core.getInput('healer-token',      { required: true });
-  const githubToken     = core.getInput('github-token',      { required: true });
+  const apiKey      = core.getInput('api-key');
+  const healerToken = core.getInput('healer-token', { required: true });
+  const githubToken = core.getInput('github-token', { required: true });
 
-  core.setSecret(anthropicApiKey);
+  core.setSecret(apiKey);
   core.setSecret(healerToken);
   core.setSecret(githubToken);
 
@@ -34,9 +38,12 @@ async function main(): Promise<void> {
     startCommand:   core.getInput('start-command'),
     testCommand:    core.getInput('test-command'),
     baseUrl:        core.getInput('base-url'),
-    anthropicApiKey,
+    apiKey,
     healerToken,
     githubToken,
+    provider:       core.getInput('provider'),
+    model:          core.getInput('model'),
+    apiEndpoint:    core.getInput('api-endpoint'),
   };
 
   // ── Phase C: VALIDATION (Zod; fail-fast; field-naming error per SC#4) ──
@@ -75,16 +82,29 @@ async function main(): Promise<void> {
  * suspenders). This is the permanent dry-run contract: exit 0 + no side effects.
  */
 async function runDryRun(config: Config): Promise<void> {
+  const apiKeyCell = config.apiKey.length > 0
+    ? '(set — redacted)'
+    : (config.provider === 'ollama' ? '(empty — allowed for ollama)' : '(empty)');
+  const modelCell = config.model.length > 0
+    ? config.model
+    : `(default: ${DEFAULT_MODELS[config.provider]})`;
+  const apiEndpointCell = config.apiEndpoint.length > 0
+    ? config.apiEndpoint
+    : '(default)';
+
   const rows: Array<[string, string]> = [
     ['mode',          config.mode],
+    ['provider',      config.provider],
+    ['model',         modelCell],
+    ['api-endpoint',  apiEndpointCell],
     ['setup-command', config.setupCommand || '(empty)'],
     ['start-command', config.startCommand || '(empty)'],
     ['test-command',  config.testCommand  || '(empty)'],
     ['base-url',      config.baseUrl      || '(empty)'],
     // Secrets intentionally omitted from dry-run output (defense in depth on top of setSecret masking).
-    ['anthropic-api-key', '(set — redacted)'],
-    ['healer-token',      '(set — redacted)'],
-    ['github-token',      '(set — redacted)'],
+    ['api-key',      apiKeyCell],
+    ['healer-token', '(set — redacted)'],
+    ['github-token', '(set — redacted)'],
   ];
 
   let md = '# playwright-healer — dry-run summary\n\n';
