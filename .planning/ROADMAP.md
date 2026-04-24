@@ -31,10 +31,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A workflow run that provides an invalid `anthropic-api-key` still masks the value in the Actions log — the raw secret never appears
   4. The `mode` input accepts `ingest`, `heal`, and `dry-run` values and the action fails fast with a descriptive error for any other value
 **Plans**: 6 plans
-- [ ] 01-01-PLAN.md — Package scaffold: package.json + package-lock.json + tsconfig.json + .gitignore (PKG-01, PKG-02)
-- [ ] 01-02-PLAN.md — Shared modules: src/shared/security-contract.ts + config.ts + security-contract.snapshot.json (CFG-05 foundation)
-- [ ] 01-03-PLAN.md — Dispatcher + stubs: src/index.ts (D-07 startup order) + src/ingest/index.ts + src/healer/index.ts (SEC-06, CFG-05)
-- [ ] 01-04-PLAN.md — Composite manifest: action.yml with 8 inputs, SHA-pinned setup-node, INPUT_* env block (PKG-01, PKG-02, CFG-01, CFG-02)
+- [x] 01-01-PLAN.md — Package scaffold: package.json + package-lock.json + tsconfig.json + .gitignore (PKG-01, PKG-02)
+- [x] 01-02-PLAN.md — Shared modules: src/shared/security-contract.ts + config.ts + security-contract.snapshot.json (CFG-05 foundation)
+- [x] 01-03-PLAN.md — Dispatcher + stubs: src/index.ts (D-07 startup order) + src/ingest/index.ts + src/healer/index.ts (SEC-06, CFG-05)
+- [x] 01-04-PLAN.md — Composite manifest: action.yml with 8 inputs, SHA-pinned setup-node, INPUT_* env block (PKG-01, PKG-02, CFG-01, CFG-02)
 - [ ] 01-05-PLAN.md — CI enforcement: .github/workflows/security-lint.yml with 4 D-14 checks (SEC-01, SEC-02, SEC-07)
 - [ ] 01-06-PLAN.md — CI self-test: .github/workflows/phase1-self-test.yml with 5 jobs including TWO-JOB canary-mask pattern (SEC-06, CFG-02, CFG-05)
 
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Security Scaffold + Composite Packaging | 0/TBD | Not started | - |
+| 1. Security Scaffold + Composite Packaging | 4/6 | In progress | - |
 | 2. Ingest + State Branch + Log-Only Detection | 0/TBD | Not started | - |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 0/TBD | Not started | - |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
