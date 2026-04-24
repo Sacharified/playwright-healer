@@ -41,7 +41,7 @@ Lock the four architecturally-binding security controls and the composite-action
 - **D-04:** **Single TS dispatcher** in `src/index.ts`. Reads `INPUT_MODE` env, validates via Zod, switches to ingest/heal/dry-run. Pre-step for mode validation is the same step — no `if:` conditionals in `action.yml` gate per-mode logic.
 - **D-05:** `mode: dry-run` in Phase 1 = **validate all inputs + merged config, print redacted config dump to `$GITHUB_STEP_SUMMARY`, exit 0**. Becomes the permanent `dry-run` contract — future phases add inspection output but never change the exit-0 + no-side-effects guarantee.
 - **D-06:** Invalid `mode` values exit 1 with a Zod error message naming the field (`mode` must be one of `ingest`, `heal`, `dry-run`; got `banana`). Covers SC#4.
-- **D-07:** Mode validation runs **before** any other work (including secret reads). Fail-fast on invalid config; never touch secrets for an invalid run.
+- **D-07:** **Startup ordering is authoritative:** `getInput(...)` → `core.setSecret(...)` on all three secrets → Zod validation → mode dispatch. Secrets are **registered with the masker first** (so any subsequent log line — including a Zod error that quotes an input name — cannot leak them); secrets are **not used** for any purpose (no API calls, no git operations, no dispatch) until mode is validated and dispatch begins. Fail-fast on invalid mode happens **after** registration but **before** use. This resolves the apparent tension with D-18: "register before anything is logged" and "do not use secrets for an invalid run" are both true and non-conflicting under this order.
 
 ### Repository Scaffold
 
@@ -92,17 +92,19 @@ Lock the four architecturally-binding security controls and the composite-action
   1. Grep this repo for the literal string `pull_request_target` — fail if any match exists outside `.planning/`, `CLAUDE.md`, `README.md` (these can legitimately reference the string in prose).
   2. Parse every `.github/workflows/*.yml` + `action.yml` — fail if any `actions/checkout` step lacks `persist-credentials: false`.
   3. Compare `.planning/security-contract.snapshot.json` against values imported from `src/shared/security-contract.ts`; fail on mismatch unless the latest commit has the `Security-Contract-Change:` trailer.
+  4. SEC-07 phone-home check per D-16a.
 - **D-15:** Phase 1 also ships **`.github/workflows/phase1-self-test.yml`** — minimal action invocation self-test:
-  1. Runs the action with `mode: dry-run` and `anthropic-api-key: ${{ secrets.CANARY_KEY }}` (a canary value set to `test-canary-DO-NOT-USE-REAL-KEY` via repo secret).
+  1. Runs the action with `mode: dry-run` and `anthropic-api-key: 'test-canary-DO-NOT-USE-REAL-KEY'` as a **literal inline value** in the workflow (not a repo secret). Rationale: the canary string is a publicly-documented probe, not a secret; storing it in `secrets.*` would create operational friction (maintainer must set the secret before CI can pass) and give a false impression that it's sensitive. A literal value keeps the self-test self-contained — anyone cloning the repo can run CI without configuring secrets.
   2. Downloads the job log via `gh api` in a post step and greps for the canary — fails if the raw string appears (proves `core.setSecret` masked it).
   3. Runs the action with `mode: banana` — asserts exit code 1 and the Zod error message contains `mode`.
   4. Runs the action with no api-key input — asserts exit code 1 and error mentions the missing required input.
 - **D-16:** Full fixture-repo self-test (PKG-04) remains in Phase 6 — Phase 1's self-test is action-surface only, not a full ingest/heal round-trip.
+- **D-16a:** **SEC-07 (no phone home) verification** lands in Phase 1 as a **static check in `security-lint.yml`**: grep `src/**/*.ts` for outbound HTTP call patterns (`fetch(`, `http.request(`, `https.request(`, `axios`, `got(`, `node-fetch`) and fail if any match exists outside an explicit allowlist of API hosts (only `api.anthropic.com` and `api.github.com` are permitted, and only in files that need them — zero such files exist in Phase 1). For Phase 1 the check is simply: "no HTTP client usage appears anywhere in src/." Phases 2/3 extend the allowlist as they introduce Octokit / SDK usage. This gives SEC-07 a mechanical regression gate rather than a manual review promise.
 
 ### Inputs & Secrets (action.yml)
 
 - **D-17:** Required inputs defined in Phase 1 (SC-visible in Phase 1 verification): `mode` (string, required, validated to `ingest|heal|dry-run`). User-command inputs (`setup-command`, `start-command`, `test-command`, `base-url`) are **declared** in action.yml per CFG-01 but are not yet consumed (ingest/heal stubs don't read them).
-- **D-18:** Secret inputs declared in action.yml: `anthropic-api-key` (required), `healer-token` (required), `github-token` (defaults to `${{ github.token }}`). All three fed into `core.setSecret()` as the **first action** inside `src/index.ts` — before any other log line, before Zod validation that might echo input names.
+- **D-18:** Secret inputs declared in action.yml: `anthropic-api-key` (required), `healer-token` (required), `github-token` (defaults to `${{ github.token }}`). All three are `getInput(..)`'d and fed into `core.setSecret()` as the **first action** inside `src/index.ts` per the startup order in D-07 — before any other log line, before Zod validation that might echo input names. Registration is not "use" — no API call, git op, or dispatch happens with these values until after mode validation succeeds.
 - **D-19:** `healer-token` presence is validated (not empty string) but **not validated for scope** in Phase 1 — scope checks are lazy, happening when the token is first used (Phase 2 for dispatch, Phase 3 for PR creation). Phase 1 only requires the input exists.
 - **D-20:** Node version pin — action.yml sets up Node 24 via `actions/setup-node@<pinned-sha>`. Pin to commit SHA, not `@v4` (PITFALLS.md `@v1` floating-tag warning; also SEC hygiene).
 
