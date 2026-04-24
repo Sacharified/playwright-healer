@@ -30,7 +30,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Every `actions/checkout` step in any workflow file in `.github/workflows/` includes `persist-credentials: false`; searching the repo for `pull_request_target` returns zero results
   3. A workflow run that provides an invalid `anthropic-api-key` still masks the value in the Actions log — the raw secret never appears
   4. The `mode` input accepts `ingest`, `heal`, and `dry-run` values and the action fails fast with a descriptive error for any other value
-**Plans**: TBD
+**Plans**: 6 plans
+- [ ] 01-01-PLAN.md — Package scaffold: package.json + package-lock.json + tsconfig.json + .gitignore (PKG-01, PKG-02)
+- [ ] 01-02-PLAN.md — Shared modules: src/shared/security-contract.ts + config.ts + security-contract.snapshot.json (CFG-05 foundation)
+- [ ] 01-03-PLAN.md — Dispatcher + stubs: src/index.ts (D-07 startup order) + src/ingest/index.ts + src/healer/index.ts (SEC-06, CFG-05)
+- [ ] 01-04-PLAN.md — Composite manifest: action.yml with 8 inputs, SHA-pinned setup-node, INPUT_* env block (PKG-01, PKG-02, CFG-01, CFG-02)
+- [ ] 01-05-PLAN.md — CI enforcement: .github/workflows/security-lint.yml with 4 D-14 checks (SEC-01, SEC-02, SEC-07)
+- [ ] 01-06-PLAN.md — CI self-test: .github/workflows/phase1-self-test.yml with 5 jobs including TWO-JOB canary-mask pattern (SEC-06, CFG-02, CFG-05)
 
 ### Phase 2: Ingest + State Branch + Log-Only Detection
 **Goal**: Consuming repos can drop the ingest step into their existing Playwright CI workflow, and after each run a stats record appears on the `playwright-healer-state` branch; when tests cross thresholds the action logs detections to the step summary without dispatching anything
