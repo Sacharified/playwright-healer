@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-03-PLAN.md (dispatcher + stubs)
-last_updated: "2026-04-24T15:38:57.324Z"
+stopped_at: Completed 01-04-PLAN.md (action.yml composite manifest)
+last_updated: "2026-04-24T15:44:04.231Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 01 (security-scaffold-composite-packaging) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-04-24
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [█████░░░░░] 50%
 | Phase 01 P01 | 8m | 2 tasks | 4 files |
 | Phase 01-security-scaffold-composite-packaging P02 | 8m | 2 tasks | 3 files |
 | Phase 01-security-scaffold-composite-packaging P03 | ~15m | 2 tasks | 3 files |
+| Phase 01-security-scaffold-composite-packaging P04 | 12min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - D-07 startup order implemented verbatim — setSecret × 3 precede safeParse (awk verified at lines 28 < 43)
 - Zod issue.path.join('.') produces camelCase (anthropicApiKey not anthropic-api-key) — Plan 06 assertions must match camelCase
 - @actions/core v3 getInput maps hyphens to hyphens in env var name (INPUT_ANTHROPIC-API-KEY not INPUT_ANTHROPIC_API_KEY)
+- INPUT_* env keys use hyphens (INPUT_ANTHROPIC-API-KEY) not underscores — @actions/core v3 preserves hyphens; RESEARCH Pattern 1 was stale; 01-03-SUMMARY empirical finding is authoritative
+- actions/setup-node SHA 48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e re-verified at execution via gh api — matches RESEARCH.md exactly, tag not moved
 
 ### Pending Todos
 
@@ -97,8 +100,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-24T15:38:57.321Z
-Stopped at: Completed 01-03-PLAN.md (dispatcher + stubs)
+Last session: 2026-04-24T15:44:04.229Z
+Stopped at: Completed 01-04-PLAN.md (action.yml composite manifest)
 Resume file: None
 
 **Planned Phase:** 1 (Security Scaffold + Composite Packaging) — 6 plans — 2026-04-24T15:06:35.691Z

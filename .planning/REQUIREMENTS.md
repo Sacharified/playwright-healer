@@ -21,8 +21,10 @@
 
 ### Configuration (CFG)
 
-- [ ] **CFG-01**: `action.yml` exposes inputs for all user-provided commands: `setup-command`, `start-command`, `test-command`, `base-url`
-- [ ] **CFG-02**: `action.yml` exposes secret inputs: `anthropic-api-key` (required), `healer-token` (PAT or App token, required for PR creation and `workflow_dispatch`), `github-token` (defaults to built-in)
+- [x] **CFG-01
+**: `action.yml` exposes inputs for all user-provided commands: `setup-command`, `start-command`, `test-command`, `base-url`
+- [x] **CFG-02
+**: `action.yml` exposes secret inputs: `anthropic-api-key` (required), `healer-token` (PAT or App token, required for PR creation and `workflow_dispatch`), `github-token` (defaults to built-in)
 - [ ] **CFG-03**: `action.yml` exposes tunable thresholds: `flake-rate-threshold` (default 0.2 = 20%), `flake-window-days` (default 7), `slow-regression-pct` (default 1.5 = 50% slower), `rerun-count` (default 10), `rerun-pass-rate` (default 0.9 = 9/10), `max-budget-usd` (default 2.00), `max-turns` (default 30)
 - [ ] **CFG-04**: `action.yml` exposes per-fix-class toggles: `enable-selector-fixes`, `enable-wait-fixes`, `enable-assertion-fixes`, `enable-slow-fixes` (all default true)
 - [x] **CFG-05
