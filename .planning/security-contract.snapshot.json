@@ -1,0 +1,15 @@
+{
+  "allowedOriginTemplate": [
+    "<baseUrl>",
+    "http://localhost:*"
+  ],
+  "allowedTools": [
+    "Glob",
+    "Grep",
+    "Read",
+    "mcp__playwright__*"
+  ],
+  "forbiddenWorkflowTriggers": [
+    "pull_request_target"
+  ]
+}
