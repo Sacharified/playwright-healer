@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build artifacts (must never exist in this repo — Pitfall 7; guard anyway)
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Environment files (no secrets should ever land in repo)
+.env
+.env.local
