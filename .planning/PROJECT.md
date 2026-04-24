@@ -48,14 +48,15 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 - **Auto-merge by default** — auto-merge is opt-in only; the safe default is a review-requested PR
 - **Blind (unvalidated) PRs** — every proposed fix must be validated by re-running the test before a PR is opened; we trade speed for signal
 - **Per-test owner @-mentions in v1** — deferred; issues are the v1 notification channel to keep scope tight
-- **Non-TypeScript agent runtime (Python Agent SDK)** — packaging as a JS action with the TS Agent SDK gives the cleanest adoption path; Python SDK is not used
+- **Non-TypeScript agent runtime (Python Agent SDK)** — we ship a composite action that runs TypeScript via Node; the TS Agent SDK gives the cleanest adoption path; Python SDK is not used
+- **Bundling the action into a single `dist/index.js` via `ncc` or similar** — overridden by research: the Claude Agent SDK resolves a platform-specific native binary via `import.meta.url`, which bundlers break, and `ncc` will not support Node 24 (GitHub-mandated June 2, 2026). We ship as a composite action with `npm ci --production` at runtime, matching Anthropic's own `claude-code-action` pattern
 
 ## Context
 
 **Technical environment:**
 - The consuming repo runs Playwright in GitHub Actions and produces a Playwright JSON report per run
 - The consuming repo must be able to start its app under test via a shell command (dev server, preview build, or containerized stack)
-- The action needs an `ANTHROPIC_API_KEY` secret for the Claude Agent SDK and a `GITHUB_TOKEN` (or PAT) with `contents:write`, `pull-requests:write`, `issues:write`, and `actions:write` (for workflow_dispatch)
+- The action needs an `ANTHROPIC_API_KEY` secret for the Claude Agent SDK. It uses `GITHUB_TOKEN` for low-scope operations (reading the report, writing stats to the state branch) but requires a PAT or GitHub App token (`healer-token` input) for PR creation and `workflow_dispatch` — PRs opened by `GITHUB_TOKEN` do not trigger downstream CI (GitHub's recursion guard), which would defeat the validation loop
 
 **Key tooling:**
 - **Claude Agent SDK (TypeScript)** — the agent loop; handles tool use, MCP connection, and the reasoning passes for root-cause analysis and fix generation
@@ -76,7 +77,7 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 
 ## Constraints
 
-- **Tech stack (action):** TypeScript, Node LTS, `@actions/core` + `@actions/github`, bundled via `ncc` into `dist/index.js` — standard JS action pattern, no Docker
+- **Tech stack (action):** TypeScript, Node 24 (GitHub Actions default from June 2, 2026), `@actions/core` + `@actions/github`; shipped as a **composite action** that runs `npm ci --production` at runtime — no bundling. Confirmed against Anthropic's own `claude-code-action` pattern; ncc/esbuild break the Agent SDK's native-binary resolution
 - **Tech stack (agent):** Claude Agent SDK (TS) + Playwright MCP — locked in Key Decisions; not revisiting without strong reason
 - **Runtime environment:** GitHub Actions runners (ubuntu-latest baseline); must not assume self-hosted infra
 - **State storage:** dedicated git branch in the consuming repo; zero-infra requirement rules out external stores for v1
@@ -90,11 +91,14 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Target a reusable GitHub Action, not a private tool or SaaS | Maximum leverage — one build, many consumers; avoids data-handling liability; users bring their own API key | — Pending |
-| Claude Agent SDK (TypeScript) as the agent layer | Native MCP support, tool-use ergonomics, matches the JS action packaging | — Pending |
+| Claude Agent SDK (TypeScript) as the agent layer | Native MCP support, tool-use ergonomics, default model `claude-sonnet-4-6` with `claude-opus-4-7` opt-in for hard cases | — Pending |
 | Hybrid trigger: stats every run + threshold-dispatched healer workflow | Non-blocking main CI, scales past single-run context, fits the reusable-action model | — Pending |
 | Store rolling flake/speed history on a dedicated git branch in the consuming repo | Durable, diffable, zero-infra; avoids artifact retention limits and external-store burden | — Pending |
 | Consuming repo exposes start commands via `action.yml` inputs (`setup-command`, `start-command`, `test-command`, `base-url`) | Explicit beats convention; documentable and predictable across diverse repos | — Pending |
-| Package as a TypeScript JS action (not Docker, not composite) | Fast cold start, standard ecosystem, easy to test, aligns with TS Agent SDK | — Pending |
+| Package as a **composite GitHub Action** (not bundled JS, not Docker) | Flipped by research: Claude Agent SDK spawns a platform-specific native binary via `import.meta.url` that bundlers break; ncc won't support Node 24 (GH-mandated June 2, 2026). `npm ci --production` at runtime matches Anthropic's own `claude-code-action` | ✓ Research-validated |
+| Require a PAT or GitHub App token (`healer-token` input) for PR creation and `workflow_dispatch` | PRs opened by `GITHUB_TOKEN` receive vacuous "all checks passed" (no CI fires) due to GitHub's recursion guard — this would defeat the validation loop. PAT is the documented path for consumer repos | ✓ Research-validated |
+| Security scaffolding (composite `action.yml`, `persist-credentials: false`, no `pull_request_target`, scoped MCP tools) must ship in Phase 0 before any agent code | Four HIGH-severity pitfalls are architectural: credential leaks, fork-PR exfiltration, token-in-workspace, and agent filesystem scoping. All are expensive to retrofit and cheap to get right upfront | ✓ Research-validated |
+| Build order: v0 observability (stats + state-branch + threshold evaluator in log-only mode) ships before v1 agent loop | De-risks the git-as-DB concurrency model at zero API cost before expensive agent code is built on top of it | ✓ Research-validated |
 | v1 fix scope: selectors, waits/timing, assertions, slow tests (all four) | These cover the vast majority of Playwright flake causes; logic bugs explicitly out of scope | — Pending |
 | Every fix must be validated by re-running the test N times before PR | Trading speed for signal; unvalidated PRs become noise and erode trust in the action | — Pending |
 | Auto-merge is opt-in per repo and per fix class; default is review-requested | Reusable action must be safe by default; auto-merge is a power-user feature | — Pending |
@@ -118,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-24 after initialization*
+*Last updated: 2026-04-24 after initialization + project research (composite-action packaging, PAT requirement, Phase 0 security scaffolding, v0/v1 build-order findings incorporated)*
