@@ -1,14 +1,14 @@
 name: 'playwright-healer'
-description: 'Auto-heal flaky Playwright tests via Claude Agent SDK + Playwright MCP'
+description: 'Auto-heal flaky Playwright tests via an LLM agent + Playwright MCP'
 author: 'playwright-healer contributors'
 
 inputs:
   mode:
     description: 'Run mode: ingest | heal | dry-run'
     required: true
-  anthropic-api-key:
-    description: 'Anthropic API key for Claude Agent SDK'
-    required: true
+  api-key:
+    description: 'Inference-provider API key (Anthropic, Gemini, or — for Ollama localhost — may be empty)'
+    required: false
   healer-token:
     description: 'PAT or GitHub App token required for PR creation and workflow_dispatch'
     required: true
@@ -32,6 +32,18 @@ inputs:
     description: 'Base URL of the application under test'
     required: false
     default: ''
+  provider:
+    description: 'Inference provider: anthropic | gemini | ollama'
+    required: false
+    default: 'anthropic'
+  model:
+    description: 'Model id (provider-specific). Empty string means use provider default.'
+    required: false
+    default: ''
+  api-endpoint:
+    description: 'Custom provider endpoint. Mainly useful for self-hosted Ollama (e.g. http://localhost:11434). Empty string uses provider default.'
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -51,11 +63,14 @@ runs:
       working-directory: ${{ github.action_path }}
       env:
         INPUT_MODE: ${{ inputs.mode }}
-        INPUT_ANTHROPIC-API-KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_API-KEY: ${{ inputs.api-key }}
         INPUT_HEALER-TOKEN: ${{ inputs.healer-token }}
         INPUT_GITHUB-TOKEN: ${{ inputs.github-token }}
         INPUT_SETUP-COMMAND: ${{ inputs.setup-command }}
         INPUT_START-COMMAND: ${{ inputs.start-command }}
         INPUT_TEST-COMMAND: ${{ inputs.test-command }}
         INPUT_BASE-URL: ${{ inputs.base-url }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_API-ENDPOINT: ${{ inputs.api-endpoint }}
       run: npx tsx src/index.ts
