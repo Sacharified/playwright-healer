@@ -62,7 +62,8 @@
 - [ ] **SEC-03**: The Playwright MCP is launched with `--allowed-origins` constraining navigation to `base-url` + `http://localhost:*`
 - [ ] **SEC-04**: The Claude Agent SDK is configured with an explicit `allowedTools` list: `["mcp__playwright__*", "Read", "Grep", "Glob"]`. `Bash`, `Write`, `Edit`, and other tools are not in that list; fix application happens outside the agent loop
 - [ ] **SEC-05**: Before dispatching a heal, loop-guard checks: (a) the triggering commit's author is not `playwright-healer-bot`, (b) the triggering commit message does not contain `[skip-healer]`, (c) the per-test heal count in the state branch is below `max-heals-per-test-per-week` (default 3)
-- [ ] **SEC-06**: The action never logs the values of `anthropic-api-key`, `healer-token`, or `github-token`; `@actions/core.setSecret` is called on each at startup
+- [x] **SEC-06
+**: The action never logs the values of `anthropic-api-key`, `healer-token`, or `github-token`; `@actions/core.setSecret` is called on each at startup
 - [ ] **SEC-07**: The action does not phone home (no telemetry HTTP calls); the only outbound HTTP calls are to `api.anthropic.com` and `api.github.com`
 
 ### Healer Runtime & Context (HEA)
