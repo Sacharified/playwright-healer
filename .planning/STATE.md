@@ -3,34 +3,34 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 01-06-PLAN.md (phase1-self-test.yml — end-to-end self-test workflow; Phase 1 complete)
-last_updated: "2026-04-24T16:00:53.949Z"
-last_activity: 2026-04-24
+stopped_at: Completed 01.1-01-PLAN code + docs; 01.1-HUMAN-UAT awaiting CI run
+last_updated: "2026-04-25T00:10:00.000Z"
+last_activity: 2026-04-25 — Phase 01.1 multi-provider input surface committed
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 1
-  total_plans: 6
+  total_plans: 7
   completed_plans: 6
-  percent: 100
+  percent: 86
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-24)
+See: .planning/PROJECT.md (updated 2026-04-25)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 01 — security-scaffold-composite-packaging
+**Current focus:** Phase 01.1 — multi-provider-input (code committed, awaiting CI verification)
 
 ## Current Position
 
-Phase: 01 (security-scaffold-composite-packaging) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-04-24
+Phase: 01.1 (multi-provider-input) — VERIFYING
+Plan: 1 of 1 (code complete)
+Status: 01.1 code + docs committed; run CI to validate 6 items in 01.1-HUMAN-UAT.md. Phase 01 remains `verifying` with its HUMAN-UAT superseded by 01.1.
+Last activity: 2026-04-25 — Phase 01.1 scaffolded (anthropic-api-key → api-key + provider enum)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 86% (6/7 plans complete)
 
 ## Performance Metrics
 

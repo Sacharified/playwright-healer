@@ -13,6 +13,7 @@ playwright-healer ships as a composite GitHub Action that transforms Playwright 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Security Scaffold + Composite Packaging** - Establish the composite action structure with all four architecturally-binding security controls in place before any agent code is written
+- [ ] **Phase 1.1: Multi-Provider Input Surface** (INSERTED) - Generalize the Anthropic-specific input surface to support Anthropic, Gemini, and Ollama via a `provider` input; drop `required: true` on `api-key` with per-provider Zod `superRefine` enforcement; adapters land in Phase 3
 - [ ] **Phase 2: Ingest + State Branch + Log-Only Detection** - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
 - [ ] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** - Wire the full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback for all failure modes
 - [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
@@ -28,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. Running `cat action.yml` on a cloned copy of the repo shows `runs.using: composite` with `npm ci --production` as the first step; no `dist/index.js` entrypoint exists
   2. Every `actions/checkout` step in any workflow file in `.github/workflows/` includes `persist-credentials: false`; searching the repo for `pull_request_target` returns zero results
-  3. A workflow run that provides an invalid `anthropic-api-key` still masks the value in the Actions log — the raw secret never appears
+  3. A workflow run that provides an invalid `api-key` still masks the value in the Actions log — the raw secret never appears (renamed from `anthropic-api-key` in Phase 1.1)
   4. The `mode` input accepts `ingest`, `heal`, and `dry-run` values and the action fails fast with a descriptive error for any other value
 **Plans**: 6 plans
 - [x] 01-01-PLAN.md — Package scaffold: package.json + package-lock.json + tsconfig.json + .gitignore (PKG-01, PKG-02)
@@ -37,6 +38,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 01-04-PLAN.md — Composite manifest: action.yml with 8 inputs, SHA-pinned setup-node, INPUT_* env block (PKG-01, PKG-02, CFG-01, CFG-02)
 - [ ] 01-05-PLAN.md — CI enforcement: .github/workflows/security-lint.yml with 4 D-14 checks (SEC-01, SEC-02, SEC-07)
 - [ ] 01-06-PLAN.md — CI self-test: .github/workflows/phase1-self-test.yml with 5 jobs including TWO-JOB canary-mask pattern (SEC-06, CFG-02, CFG-05)
+
+### Phase 1.1: Multi-Provider Input Surface (INSERTED)
+**Goal**: The action's input surface is provider-agnostic — the same `api-key` input is consumed by Anthropic, Gemini, and Ollama adapters (adapters land in Phase 3). Empty `api-key` is allowed when `provider=ollama` so users can point at a local Ollama instance without auth.
+**Depends on**: Phase 1
+**Requirements**: CFG-02 (amended), CFG-05 (amended), SEC-06 (amended)
+**Success Criteria** (what must be TRUE):
+  1. `action.yml` declares inputs `api-key` (not `anthropic-api-key`), `provider` (enum: anthropic | gemini | ollama, default anthropic), `model` (optional; empty string → provider default), `api-endpoint` (optional; empty string → provider default). `INPUT_API-KEY` / `INPUT_PROVIDER` / `INPUT_MODEL` / `INPUT_API-ENDPOINT` env mappings use the hyphen convention required by `@actions/core` v3.
+  2. Invoking the action with `provider: ollama` + empty `api-key` + `mode: dry-run` exits 0 and the dry-run summary shows `| \`provider\` | ollama |` and `| \`api-key\` | (empty — allowed for ollama) |`.
+  3. Invoking the action with `provider: anthropic` + empty `api-key` fails with a Zod error on path `apiKey` whose message does NOT echo any secret value (CFG-05 masking-safe).
+  4. `.github/workflows/phase1-self-test.yml` runs 5 scenarios — the existing 4 renamed + a new `self-test-ollama-empty-key` — and all pass on ubuntu-latest + Node 24.
+**Plans**: 1 plan
+- [ ] 01.1-01-PLAN.md — Input surface rename + provider/model/api-endpoint addition + Zod superRefine + self-test rename + Ollama scenario + docs
 
 ### Phase 2: Ingest + State Branch + Log-Only Detection
 **Goal**: Consuming repos can drop the ingest step into their existing Playwright CI workflow, and after each run a stats record appears on the `playwright-healer-state` branch; when tests cross thresholds the action logs detections to the step summary without dispatching anything

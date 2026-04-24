@@ -56,10 +56,10 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 **Technical environment:**
 - The consuming repo runs Playwright in GitHub Actions and produces a Playwright JSON report per run
 - The consuming repo must be able to start its app under test via a shell command (dev server, preview build, or containerized stack)
-- The action needs an `ANTHROPIC_API_KEY` secret for the Claude Agent SDK. It uses `GITHUB_TOKEN` for low-scope operations (reading the report, writing stats to the state branch) but requires a PAT or GitHub App token (`healer-token` input) for PR creation and `workflow_dispatch` — PRs opened by `GITHUB_TOKEN` do not trigger downstream CI (GitHub's recursion guard), which would defeat the validation loop
+- The action needs an inference-provider API key (`api-key` input — any of Anthropic, Gemini, or Ollama per the Phase 01.1 multi-provider surface). Ollama localhost may omit the key; Anthropic and Gemini require it (enforced by Zod `superRefine`). The action uses `GITHUB_TOKEN` for low-scope operations (reading the report, writing stats to the state branch) but requires a PAT or GitHub App token (`healer-token` input) for PR creation and `workflow_dispatch` — PRs opened by `GITHUB_TOKEN` do not trigger downstream CI (GitHub's recursion guard), which would defeat the validation loop
 
 **Key tooling:**
-- **Claude Agent SDK (TypeScript)** — the agent loop; handles tool use, MCP connection, and the reasoning passes for root-cause analysis and fix generation
+- **LLM agent loop (TypeScript)** — provider-specific adapter selected via the `provider` input (`anthropic` → Claude Agent SDK, `gemini` → `@google/genai` with experimental MCP, `ollama` → native function-calling via an MCP bridge). Handles tool use, MCP connection, and the reasoning passes for root-cause analysis and fix generation. Adapters land in Phase 3.
 - **Playwright MCP (`@playwright/mcp`)** — gives the agent a browser-driving tool surface identical to what a human debugger would use (navigate, click, query DOM, read console, inspect network)
 - **GitHub Actions toolkit (`@actions/core`, `@actions/github`, `@octokit`)** — for reading inputs, making PRs/issues, triggering workflow_dispatch
 - **Dedicated `playwright-healer-state` branch** — rolling JSON stats stored in a protected branch in the consuming repo; durable, diffable, zero-infra
@@ -91,7 +91,8 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Target a reusable GitHub Action, not a private tool or SaaS | Maximum leverage — one build, many consumers; avoids data-handling liability; users bring their own API key | — Pending |
-| Claude Agent SDK (TypeScript) as the agent layer | Native MCP support, tool-use ergonomics, default model `claude-sonnet-4-6` with `claude-opus-4-7` opt-in for hard cases | — Pending |
+| Claude Agent SDK (TypeScript) as the default agent layer | Native MCP support, tool-use ergonomics, default model `claude-sonnet-4-6` with `claude-opus-4-7` opt-in for hard cases | — Pending |
+| Multi-provider support (Anthropic, Gemini, Ollama) via a `provider` input — added in Phase 01.1 | Reusable action shouldn't demand an Anthropic subscription; users pick the provider they already have access to. Adapters normalize tool-naming (`mcp__*` canonical → `mcp_*` for Gemini, native function names for Ollama). Adapters land in Phase 3; input surface lands now so CI runs without any Anthropic key. | ✓ Decision-locked 2026-04-25 |
 | Hybrid trigger: stats every run + threshold-dispatched healer workflow | Non-blocking main CI, scales past single-run context, fits the reusable-action model | — Pending |
 | Store rolling flake/speed history on a dedicated git branch in the consuming repo | Durable, diffable, zero-infra; avoids artifact retention limits and external-store burden | — Pending |
 | Consuming repo exposes start commands via `action.yml` inputs (`setup-command`, `start-command`, `test-command`, `base-url`) | Explicit beats convention; documentable and predictable across diverse repos | — Pending |
