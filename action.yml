@@ -1,0 +1,61 @@
+name: 'playwright-healer'
+description: 'Auto-heal flaky Playwright tests via Claude Agent SDK + Playwright MCP'
+author: 'playwright-healer contributors'
+
+inputs:
+  mode:
+    description: 'Run mode: ingest | heal | dry-run'
+    required: true
+  anthropic-api-key:
+    description: 'Anthropic API key for Claude Agent SDK'
+    required: true
+  healer-token:
+    description: 'PAT or GitHub App token required for PR creation and workflow_dispatch'
+    required: true
+  github-token:
+    description: 'GitHub token; defaults to the built-in action token'
+    required: false
+    default: ${{ github.token }}
+  setup-command:
+    description: 'Command to set up the application under test (healer mode)'
+    required: false
+    default: ''
+  start-command:
+    description: 'Command to start the application under test (healer mode)'
+    required: false
+    default: ''
+  test-command:
+    description: 'Command to run Playwright tests'
+    required: false
+    default: ''
+  base-url:
+    description: 'Base URL of the application under test'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install action dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --production
+
+    - name: Set up Node
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0 — re-verified at execution per D-20
+      with:
+        node-version: '24'
+
+    - name: Run playwright-healer
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_ANTHROPIC-API-KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_HEALER-TOKEN: ${{ inputs.healer-token }}
+        INPUT_GITHUB-TOKEN: ${{ inputs.github-token }}
+        INPUT_SETUP-COMMAND: ${{ inputs.setup-command }}
+        INPUT_START-COMMAND: ${{ inputs.start-command }}
+        INPUT_TEST-COMMAND: ${{ inputs.test-command }}
+        INPUT_BASE-URL: ${{ inputs.base-url }}
+      run: npx tsx src/index.ts
