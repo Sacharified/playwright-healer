@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md (npm + TypeScript scaffold)
-last_updated: "2026-04-24T15:24:55.519Z"
+stopped_at: Completed 01-02-PLAN.md (security contract + config schema)
+last_updated: "2026-04-24T15:30:44.113Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
-  percent: 17
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 01 (security-scaffold-composite-packaging) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-04-24
 
-Progress: [██░░░░░░░░] 17%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [██░░░░░░░░] 17%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 8m | 2 tasks | 4 files |
+| Phase 01-security-scaffold-composite-packaging P02 | 8m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ Recent decisions affecting current work:
 - Zod ^4.0.0 (not stale ^3.25.0): npm registry verified 2026-04-24 that claude-agent-sdk peer-requires ^4.0.0 only; resolved as 4.3.6
 - @actions/core pinned exactly at 3.0.1 (no caret) per PKG supply-chain mitigation
 - SDK native binary claude-agent-sdk-darwin-arm64 resolved on macOS dev; linux-x64 to be verified in Plan 06 on ubuntu-latest
+- Arrays in security-contract.ts sorted alphabetically (Glob, Grep, Read, mcp__playwright__*) — advisor reconciliation resolving PATTERNS §4 vs CONTEXT D-11 ordering inconsistency
+- Snapshot generated via recursive canonical() node helper (not JSON.stringify second-arg key filter) — safe for nested structures
+- z.string().min(1, { message }) object form used for Zod 4 (not Zod 3 positional shorthand)
 
 ### Pending Todos
 
@@ -89,8 +93,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-24T15:24:55.513Z
-Stopped at: Completed 01-01-PLAN.md (npm + TypeScript scaffold)
+Last session: 2026-04-24T15:30:44.110Z
+Stopped at: Completed 01-02-PLAN.md (security contract + config schema)
 Resume file: None
 
 **Planned Phase:** 1 (Security Scaffold + Composite Packaging) — 6 plans — 2026-04-24T15:06:35.691Z

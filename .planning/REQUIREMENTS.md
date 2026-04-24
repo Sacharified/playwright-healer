@@ -25,7 +25,8 @@
 - [ ] **CFG-02**: `action.yml` exposes secret inputs: `anthropic-api-key` (required), `healer-token` (PAT or App token, required for PR creation and `workflow_dispatch`), `github-token` (defaults to built-in)
 - [ ] **CFG-03**: `action.yml` exposes tunable thresholds: `flake-rate-threshold` (default 0.2 = 20%), `flake-window-days` (default 7), `slow-regression-pct` (default 1.5 = 50% slower), `rerun-count` (default 10), `rerun-pass-rate` (default 0.9 = 9/10), `max-budget-usd` (default 2.00), `max-turns` (default 30)
 - [ ] **CFG-04**: `action.yml` exposes per-fix-class toggles: `enable-selector-fixes`, `enable-wait-fixes`, `enable-assertion-fixes`, `enable-slow-fixes` (all default true)
-- [ ] **CFG-05**: `action.yml` exposes a mode input: `mode` = `ingest` | `heal` | `dry-run` — each step in a consumer workflow specifies which phase it runs
+- [x] **CFG-05
+**: `action.yml` exposes a mode input: `mode` = `ingest` | `heal` | `dry-run` — each step in a consumer workflow specifies which phase it runs
 - [ ] **CFG-06**: An optional `.github/playwright-healer.yml` config file in the consuming repo overrides action.yml inputs; the action merges both with action.yml winning
 - [ ] **CFG-07**: All merged config is validated with Zod; invalid config fails the action with a clear error, not a crash
 
