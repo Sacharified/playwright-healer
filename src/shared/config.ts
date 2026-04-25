@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { parse as parseYaml } from 'yaml';
+import fs from 'fs';
+import * as core from '@actions/core';
 
 const ModeEnum = z.enum(['ingest', 'heal', 'dry-run'])
   .describe('mode must be one of: ingest, heal, dry-run');
@@ -30,6 +33,43 @@ export function getInputSchema() {
     provider:        ProviderEnum.default('anthropic'),
     model:           z.string().default(''),
     apiEndpoint:     z.string().default(''),
+
+    // ── CFG-03: Ingest + threshold inputs ─────────────────────────────────────
+    reportPath:             z.string().default('test-results/results.json'),
+    flakeRateThreshold:     z.coerce.number()
+                              .refine((v) => !isNaN(v), {
+                                message: 'flake-rate-threshold must be a valid number (e.g. 0.2)',
+                              })
+                              .min(0).max(1).default(0.2),
+    flakeWindowDays:        z.coerce.number()
+                              .refine((v) => !isNaN(v), {
+                                message: 'flake-window-days must be a valid integer',
+                              })
+                              .int().min(1).default(7),
+    slowRegressionPct:      z.coerce.number()
+                              .refine((v) => !isNaN(v), {
+                                message: 'slow-regression-pct must be a valid number (e.g. 1.5)',
+                              })
+                              .min(1).default(1.5),
+    rerunCount:             z.coerce.number()
+                              .refine((v) => !isNaN(v), { message: 'rerun-count must be a valid integer' })
+                              .int().min(1).default(10),
+    rerunPassRate:          z.coerce.number()
+                              .refine((v) => !isNaN(v), { message: 'rerun-pass-rate must be a valid number (e.g. 0.9)' })
+                              .min(0).max(1).default(0.9),
+    maxBudgetUsd:           z.coerce.number()
+                              .refine((v) => !isNaN(v), { message: 'max-budget-usd must be a valid number (e.g. 2.00)' })
+                              .min(0).default(2.0),
+    maxTurns:               z.coerce.number()
+                              .refine((v) => !isNaN(v), { message: 'max-turns must be a valid integer' })
+                              .int().min(1).default(30),
+    retentionDays:          z.coerce.number()
+                              .refine((v) => !isNaN(v), { message: 'retention-days must be a valid integer (0 = GC disabled)' })
+                              .int().min(0).default(90),
+    maxHealsPerTestPerWeek: z.coerce.number()
+                              .refine((v) => !isNaN(v), { message: 'max-heals-per-test-per-week must be a valid integer' })
+                              .int().min(0).default(3),
+    stateBranchName:        z.string().default('playwright-healer-state'),
   }).superRefine((v, ctx) => {
     if (v.provider !== 'ollama' && v.apiKey.length === 0) {
       ctx.addIssue({
@@ -42,3 +82,36 @@ export function getInputSchema() {
 }
 
 export type Config = z.infer<ReturnType<typeof getInputSchema>>;
+
+// ── CFG-06: YAML config loader ─────────────────────────────────────────────
+
+export function loadYamlConfig(workspacePath: string): Record<string, unknown> {
+  const configPath = `${workspacePath}/.github/playwright-healer.yml`;
+  if (!fs.existsSync(configPath)) return {};
+  try {
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const parsed = parseYaml(raw, { maxAliasCount: 100 });
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    core.warning(
+      `CFG-06: .github/playwright-healer.yml could not be parsed as YAML: ${err}. Using defaults.`
+    );
+    return {};
+  }
+}
+
+// ── CFG-07: Config merger — action inputs win over YAML values when non-empty ─
+
+export function mergeConfigs(
+  actionInputs: Record<string, string>,
+  yamlConfig: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...yamlConfig };
+  for (const [key, value] of Object.entries(actionInputs)) {
+    if (value !== '') {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
