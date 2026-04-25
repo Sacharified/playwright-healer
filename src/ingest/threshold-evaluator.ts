@@ -3,7 +3,7 @@
 // DET-01: flake-rate detection
 // DET-02: minimum 10-run gate before emitting detections
 // DET-03: p95 duration slow-regression detection
-// DET-04: NO workflow_dispatch — log-only in Phase 02
+// DET-04: log-only in Phase 02 — no downstream dispatch
 
 import type { NdjsonRecord, NdjsonTestEntry, Detection } from '../shared/types.js';
 
