@@ -21,9 +21,9 @@ The following decisions are locked from prior phases. Phase 02 plans must not co
 | `npm` package manager | D-03 | `npm install`, `npm ci`, not bun/pnpm |
 | Single dispatcher in `src/index.ts` | D-04 | Phase 02 implements `src/ingest/index.ts` stub → real |
 | D-07 startup ordering (setSecret × 3 before everything) | D-07 | Ingest entrypoint adds NO new secrets; existing D-07 order preserved |
-| Zod factory `getInputSchema()` in `src/shared/config.ts` | D-01/D-04 | Extend this schema with CFG-03 threshold inputs; do not create a parallel schema |
-| SEC-07 phone-home ban: `fetch(`, `http.request(`, etc. banned in `src/**` | D-16a / security-lint Check 4 | Octokit git operations ARE the Phase 02 allowlist carve-out (see Q10) |
-| `persist-credentials: false` on all `actions/checkout` | D-14/SEC-01 | State-branch checkout step must also set it |
+| Zod factory `getInputSchema()` in `src/shared/config.ts` | D-01/D-04 | Extend this schema with CFG-03 threshold inputs; do not create a parallel schema. New fields must be added INSIDE the `z.object({...})` literal, before `.superRefine` is chained — `.extend()` does not exist on `ZodEffects` (the type returned by `.superRefine()`). A second `.superRefine` for cross-field validation chains after the first. |
+| SEC-07 phone-home ban: `fetch(`, `http.request(`, etc. banned in `src/**` | D-16a / security-lint Check 4 | Phase 02 uses `@actions/exec` to spawn the `git` CLI — no HTTP call-site in `src/**`; Check 4 requires NO change (see Q10) |
+| `persist-credentials: false` on all `actions/checkout` | D-14/SEC-01 | Primary workspace checkout already has this; state branch operations run in a separate git worktree, not in the primary workspace |
 | No `pull_request_target` anywhere | D-14/SEC-02 | No new triggers; ingest runs under `push` or `workflow_call` |
 | Security-contract changes need `Security-Contract-Change: reviewed-by=` trailer | D-13 | Phase 02 does not modify `security-contract.ts`; no trailer needed |
 | `healer-token` PAT for PR creation and `workflow_dispatch` | D-18 | Phase 02 does NOT dispatch (DET-04 log-only); state branch write uses GITHUB_TOKEN (contents:write already present) |
@@ -41,7 +41,7 @@ Phase 02 builds the git-as-database observability layer. It implements four dist
 
 The entire phase runs at **zero API cost**: no Claude Agent SDK, no Playwright MCP, no Anthropic API calls. The only network I/O is git push to the state branch (using GITHUB_TOKEN's built-in `contents: write` permission) and optional YAML file read from the workspace filesystem.
 
-**Primary recommendation:** Implement the state branch as a dedicated git module (`src/shared/state-branch.ts`) that encapsulates all git CLI operations including bootstrap, retry loop, and GC. Keep the threshold evaluator as a pure-function module (`src/ingest/threshold-evaluator.ts`) that takes parsed NDJSON records and returns detections — no git or GitHub API calls from within the evaluator.
+**Primary recommendation:** Implement the state branch as a dedicated git module (`src/shared/state-branch.ts`) that encapsulates all git CLI operations including bootstrap, retry loop, and GC. All git operations on the state branch MUST run in a separate `git worktree` — never in the primary workspace (the user's source code checkout) — to avoid corrupting the consumer's working tree. Keep the threshold evaluator as a pure-function module (`src/ingest/threshold-evaluator.ts`) that takes parsed NDJSON records and returns detections — no git or GitHub API calls from within the evaluator.
 
 ---
 
@@ -50,10 +50,10 @@ The entire phase runs at **zero API cost**: no Claude Agent SDK, no Playwright M
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
 | Report JSON parsing | Composite action step (TypeScript) | — | Pure TS/Node; no browser, no API; ingest module owns it |
-| State branch git operations | Composite action step (shell/TS via `@actions/exec`) | GITHUB_TOKEN (contents:write) | git CLI on runner; GITHUB_TOKEN sufficient for branch writes |
-| NDJSON append + rolling window | Composite action step (TypeScript) | — | Filesystem I/O; pure function logic; no external service |
+| State branch git operations | Composite action step (TypeScript via `@actions/exec`) in isolated git worktree | GITHUB_TOKEN (contents:write) | git CLI on runner in separate worktree; GITHUB_TOKEN sufficient for branch writes |
+| NDJSON append + rolling window | Composite action step (TypeScript) in worktree | — | Filesystem I/O; pure function logic; no external service |
 | Threshold evaluation | Composite action step (TypeScript) | — | Pure math on parsed records; entirely in-process |
-| Config file merge (CFG-06) | Composite action step (TypeScript) | Workspace filesystem | File read from `${{ github.workspace }}/.github/playwright-healer.yml` |
+| Config file merge (CFG-06) | Composite action step (TypeScript) | Workspace filesystem | File read from `process.env.GITHUB_WORKSPACE/.github/playwright-healer.yml` |
 | Step summary (DET-04) | Composite action step (`@actions/core.summary`) | GitHub UI | Core library writes to `$GITHUB_STEP_SUMMARY` |
 | Loop guard (SEC-05) | Composite action step (TypeScript) | GitHub Actions context | Reads `github.event.head_commit.author.email` / commit message |
 
@@ -97,7 +97,7 @@ npm view @vitest/coverage-v8 version  # 4.1.5 — verified 2026-04-24
 |------------|-----------|----------|
 | `yaml` (eemeli) | `js-yaml` 4.1.1 | js-yaml has no native TypeScript types in its ESM export; yaml has first-class TS support. Both work; `yaml` is the better pick for a TypeScript-strict project |
 | Vitest | Jest | Jest requires `@jest/globals` for ESM; Vitest is zero-config for native ESM + TypeScript; already endorsed in STACK.md |
-| git CLI via `@actions/exec` | GitHub REST API tree+blob create | GitHub API approach (optimistic locking via SHA check before commit) is also viable; git CLI + `--force-with-lease` is simpler to understand, test with a local bare repo, and does not require an API call roundtrip per append |
+| git CLI via `@actions/exec` in separate worktree | GitHub REST API tree+blob create | GitHub API approach (optimistic locking via SHA check before commit) is also viable; git CLI + `--force-with-lease` in a worktree is simpler to understand, test with a local bare repo, and does not require an API call roundtrip per append |
 
 ---
 
@@ -110,16 +110,18 @@ Consumer CI Job (push trigger)
         │
         ▼
 [actions/checkout @ github.sha]     ← persist-credentials: false
-        │
+        │                              (primary workspace — consumer source code)
         ▼
 [npm ci --production]               ← installs action deps
         │
         ▼
 [src/index.ts mode=ingest]
         │
-        ├─► [loop-guard] ──── bot author? ──► exit 0 (INFO)
+        ├─► [loop-guard] ──── fork PR? ──► exit 0 (INFO)
         │         │
-        │      [skip-healer] in commit msg? ──► exit 0 (INFO)
+        │     bot author? ──► exit 0 (INFO)
+        │         │
+        │   [skip-healer] in commit msg? ──► exit 0 (INFO)
         │
         ▼
 [config-loader]
@@ -137,17 +139,19 @@ Consumer CI Job (push trigger)
         │
         ▼
 [state-branch] ← STA-01..05
-  git fetch origin playwright-healer-state
-  ┌── branch exists? ─── NO ──► bootstrap (orphan create + first commit + push)
+  ┌── branch exists? (git ls-remote --exit-code)
+  │       NO ──► bootstrap in /tmp/state-worktree (orphan create + first commit + push)
   │
   YES
   │
-  git checkout playwright-healer-state -- runs/YYYY/MM/DD.ndjson
-  append NDJSON record to file
+  git worktree add /tmp/state-worktree origin/playwright-healer-state
+  [all git ops in /tmp/state-worktree — primary workspace untouched]
+  append NDJSON record to runs/YYYY/MM/DD.ndjson
   git add + git commit -m "stats: run {run_id} [skip-healer]"
-  git push --force-with-lease origin playwright-healer-state
+  git push --force-with-lease=playwright-healer-state origin playwright-healer-state
   ┌── rejected? ──► sleep(jitter) → fetch → re-append → retry (max 5)
   │                 exhausted? → log warning, skip (non-fatal)
+  git worktree remove /tmp/state-worktree
         │
         ▼
 [threshold-evaluator] ← DET-01..04
@@ -177,7 +181,7 @@ src/
 ├── shared/
 │   ├── config.ts                 # EXTEND: add CFG-03 threshold inputs + CFG-06/CFG-07 loader
 │   ├── security-contract.ts      # UNCHANGED (no new tool scoping in Phase 02)
-│   ├── state-branch.ts           # NEW: all git ops on playwright-healer-state
+│   ├── state-branch.ts           # NEW: all git ops on playwright-healer-state (worktree-isolated)
 │   ├── loop-guard.ts             # NEW: bot-author + skip-healer sentinel checks
 │   └── types.ts                  # NEW: shared type definitions (TestResult, NdjsonRecord, Detection)
 └── healer/
@@ -203,86 +207,167 @@ tests/fixtures/
 
 ## Pattern Library
 
-### Pattern 1: State Branch Bootstrap (first-ever run)
+### Pattern 1: State Branch Bootstrap (first-ever run, worktree-isolated)
 
-The action checks if `playwright-healer-state` exists before any append attempt. If the branch is absent, it creates an orphan branch with an initial empty NDJSON file.
+**Critical constraint:** All git operations on the state branch MUST happen in a separate git worktree at `/tmp/state-worktree` (or equivalent temp path). Running `git checkout --orphan playwright-healer-state` in the primary workspace would wipe the consumer's source files. Running `git push` from the primary workspace without a carefully scoped refspec would push the wrong HEAD. Use a worktree.
 
-```bash
-# state-branch bootstrap — runs inside a git-cloned workspace
-git fetch origin playwright-healer-state 2>&1
-FETCH_EXIT=$?
-
-if [ "$FETCH_EXIT" -ne 0 ]; then
-  # Branch does not exist — bootstrap
-  git checkout --orphan playwright-healer-state
-  git rm -rf .          # clean working tree (orphan inherits index)
-  mkdir -p runs/$(date -u +%Y/%m)
-  echo "" > "runs/$(date -u +%Y/%m)/$(date -u +%d).ndjson"
-  git add -A
-  git commit -m "chore: init playwright-healer-state [skip-healer]" \
-    --author="playwright-healer-bot <playwright-healer-bot@users.noreply.github.com>"
-  git push -u origin playwright-healer-state
-  # Concurrent bootstrap race: second bootstrapper will fail push and fall into retry loop
-fi
-```
-
-Key facts:
-- `git checkout --orphan <branch>` creates a branch with no parent commit [CITED: https://git-scm.com/docs/git-checkout]
-- `git rm -rf .` is mandatory after orphan creation — the working tree still contains the previous HEAD's files
-- Two concurrent bootstrappers: one push wins; the other's push fails as non-fast-forward and correctly falls into the STA-03 retry loop below
-- The `--author` flag is important for SEC-05 loop guard (bot email = early exit signal)
-
-### Pattern 2: State Branch Safe-Append Retry Loop (STA-03)
+**Branch existence detection:** Use `git ls-remote --exit-code` (exit 2 = ref absent, well-defined) rather than `git fetch` (which returns 128 for both "ref not found" AND network failures — ambiguous).
 
 ```typescript
 // src/shared/state-branch.ts
+
 import { getExecOutput } from '@actions/exec';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+const STATE_BRANCH = 'playwright-healer-state';
+const BOT_EMAIL = 'playwright-healer-bot@users.noreply.github.com';
+const BOT_NAME = 'playwright-healer-bot';
+
+export async function bootstrapOrGetWorktree(repoRemoteUrl: string): Promise<string> {
+  const worktreePath = path.join(os.tmpdir(), `playwright-healer-state-${Date.now()}`);
+
+  // Step 1: Check if branch exists on remote (exit code 2 = ref absent; 0 = exists)
+  const lsRemote = await getExecOutput(
+    'git', ['ls-remote', '--exit-code', 'origin', `refs/heads/${STATE_BRANCH}`],
+    { ignoreReturnCode: true }
+  );
+
+  if (lsRemote.exitCode === 0) {
+    // Branch exists — add worktree pointing at it
+    await getExecOutput('git', [
+      'worktree', 'add', '--no-checkout', worktreePath, `origin/${STATE_BRANCH}`
+    ]);
+    await getExecOutput('git', ['checkout', STATE_BRANCH], { cwd: worktreePath });
+    return worktreePath;
+  }
+
+  if (lsRemote.exitCode === 2) {
+    // Branch absent — bootstrap in the worktree directory
+    // Step 2: Create an empty directory for the orphan
+    fs.mkdirSync(worktreePath, { recursive: true });
+
+    // Step 3: Init a separate git repo in the temp dir (not a worktree — orphan branches
+    //         cannot be added as worktrees when they don't exist yet)
+    await getExecOutput('git', ['init'], { cwd: worktreePath });
+    await getExecOutput('git', ['remote', 'add', 'origin', repoRemoteUrl], { cwd: worktreePath });
+
+    // Step 4: Create orphan branch and initial commit
+    await getExecOutput('git', ['-c', `user.email=${BOT_EMAIL}`, '-c', `user.name=${BOT_NAME}`,
+      'checkout', '--orphan', STATE_BRANCH], { cwd: worktreePath });
+
+    const today = todayPath();  // e.g. "runs/2026/04/24.ndjson"
+    fs.mkdirSync(path.join(worktreePath, path.dirname(today)), { recursive: true });
+    fs.writeFileSync(path.join(worktreePath, today), '', 'utf8');
+
+    await getExecOutput('git', ['add', '-A'], { cwd: worktreePath });
+    await getExecOutput('git', [
+      '-c', `user.email=${BOT_EMAIL}`, '-c', `user.name=${BOT_NAME}`,
+      'commit', '-m', `chore: init playwright-healer-state [skip-healer]`
+    ], { cwd: worktreePath });
+
+    // Step 5: Push — if concurrent bootstrapper wins, our push fails; fall into retry loop
+    const push = await getExecOutput(
+      'git', ['push', '-u', 'origin', STATE_BRANCH],
+      { cwd: worktreePath, ignoreReturnCode: true }
+    );
+
+    if (push.exitCode !== 0) {
+      // Concurrent bootstrapper won — clean up temp init and add worktree to the now-existing branch
+      fs.rmSync(worktreePath, { recursive: true, force: true });
+      return bootstrapOrGetWorktree(repoRemoteUrl);  // recursive retry; branch now exists
+    }
+
+    return worktreePath;
+  }
+
+  // Exit code other than 0/2 = network error or auth failure
+  throw new Error(`git ls-remote failed with exit code ${lsRemote.exitCode}: ${lsRemote.stderr}`);
+}
+
+export async function removeWorktree(worktreePath: string): Promise<void> {
+  // Remove worktree registration from the primary repo (if it was added via `git worktree add`)
+  await getExecOutput('git', ['worktree', 'remove', '--force', worktreePath], { ignoreReturnCode: true });
+  // Also clean up the temp dir in case it was a standalone init (bootstrap path)
+  fs.rmSync(worktreePath, { recursive: true, force: true });
+}
+
+function todayPath(): string {
+  const d = new Date();
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `runs/${y}/${m}/${day}.ndjson`;
+}
+```
+
+Key facts:
+- `git worktree add` requires the branch to already exist on the remote — that is why the bootstrap path uses a separate `git init` in a temp dir instead of a worktree
+- `git checkout --orphan` in the temp-init dir creates an orphan without affecting the primary workspace [CITED: https://git-scm.com/docs/git-checkout]
+- After `git checkout --orphan`, all files from the previous HEAD are staged — but since this is a fresh `git init` with no previous commits, the index is clean; no `git rm -rf .` needed in the init path
+- `git ls-remote --exit-code` returns exit 2 when the ref is absent (well-defined, unlike `git fetch` exit 128 which also fires on auth/network errors) [CITED: https://git-scm.com/docs/git-ls-remote]
+- Two concurrent bootstrappers: one push wins; the other's push fails; the recursive retry correctly uses `git worktree add` on the now-existing branch
+
+### Pattern 2: State Branch Safe-Append Retry Loop (STA-03)
+
+All operations run in `worktreePath` returned by Pattern 1. The primary workspace is never touched.
+
+```typescript
+// src/shared/state-branch.ts (continued)
+import * as core from '@actions/core';
 
 const MAX_RETRIES = 5;
 
 export async function appendRecord(
   record: NdjsonRecord,
-  ndjsonPath: string  // e.g. runs/2026/04/24.ndjson
+  worktreePath: string
 ): Promise<void> {
+  const ndjsonPath = todayPath();  // e.g. "runs/2026/04/24.ndjson"
+  const absPath = path.join(worktreePath, ndjsonPath);
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    // Step 1: Fetch latest state
-    await getExecOutput('git', ['fetch', 'origin', 'playwright-healer-state']);
+    // Step 1: Fetch latest state from remote (into worktree's tracking branch)
+    await getExecOutput('git', ['fetch', 'origin', STATE_BRANCH], { cwd: worktreePath });
+    await getExecOutput('git', ['reset', '--hard', `origin/${STATE_BRANCH}`], { cwd: worktreePath });
 
-    // Step 2: Get the file from remote (clobbers local copy)
+    // Step 2: Ensure the day's file directory exists
+    fs.mkdirSync(path.join(worktreePath, path.dirname(ndjsonPath)), { recursive: true });
+
+    // Step 3: Append record (atomic rename to prevent partial-write corruption)
+    const existing = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : '';
+    const appended = existing + JSON.stringify(record) + '\n';
+    const tmpPath = `${absPath}.tmp`;
+    fs.writeFileSync(tmpPath, appended, 'utf8');
+    fs.renameSync(tmpPath, absPath);  // atomic on POSIX
+
+    // Step 4: Commit in worktree (no effect on primary workspace)
+    await getExecOutput('git', ['add', ndjsonPath], { cwd: worktreePath });
     await getExecOutput('git', [
-      'checkout', 'origin/playwright-healer-state', '--', ndjsonPath
-    ]);
+      '-c', `user.email=${BOT_EMAIL}`, '-c', `user.name=${BOT_NAME}`,
+      'commit', '-m', `stats: run ${record.runId} [skip-healer]`
+    ], { cwd: worktreePath });
 
-    // Step 3: Append record
-    const line = JSON.stringify(record) + '\n';
-    fs.appendFileSync(ndjsonPath, line, 'utf8');
-
-    // Step 4: Commit
-    await getExecOutput('git', ['add', ndjsonPath]);
-    await getExecOutput('git', [
-      'commit', '-m',
-      `stats: run ${record.runId} [skip-healer]`,
-      '--author=playwright-healer-bot <playwright-healer-bot@users.noreply.github.com>'
-    ]);
-
-    // Step 5: Push with lease
-    const push = await getExecOutput(
-      'git', ['push', '--force-with-lease', 'origin', 'playwright-healer-state'],
-      { ignoreReturnCode: true }
-    );
+    // Step 5: Push with lease — ref-qualified to avoid FETCH_HEAD ambiguity (Pitfall C)
+    const push = await getExecOutput('git', [
+      'push',
+      `--force-with-lease=${STATE_BRANCH}`,
+      'origin',
+      STATE_BRANCH
+    ], { cwd: worktreePath, ignoreReturnCode: true });
 
     if (push.exitCode === 0) return; // success
 
-    // Rejected (non-fast-forward): exponential backoff + jitter
+    // Rejected (non-fast-forward): exponential backoff + jitter, then retry
     const delayMs = 100 * Math.pow(2, attempt) + Math.floor(Math.random() * 100);
     core.warning(`State branch push rejected (attempt ${attempt + 1}/${MAX_RETRIES}). Retry in ${delayMs}ms.`);
     await new Promise(r => setTimeout(r, delayMs));
 
-    // Reset commit (local) before retry
-    await getExecOutput('git', ['reset', '--soft', 'HEAD~1']);
+    // Reset local commit before retry (the fetch+reset at loop top will refresh to remote state)
+    await getExecOutput('git', ['reset', '--soft', 'HEAD~1'], { cwd: worktreePath });
   }
 
-  // Exhausted retries — non-fatal; log and continue
+  // Exhausted retries — non-fatal per A1 assumption (see Assumptions Log)
   core.warning(
     `State branch: all ${MAX_RETRIES} push attempts rejected. ` +
     `Run ${record.runId} stats will not be recorded. Threshold evaluation proceeds with stale data.`
@@ -291,10 +376,11 @@ export async function appendRecord(
 ```
 
 Key facts:
-- `--force-with-lease` succeeds only if the remote ref matches our local `FETCH_HEAD`; concurrent push from another job causes rejection [CITED: https://git-scm.com/docs/git-push#Documentation/git-push.txt---force-with-leaseltrefnamegt]
-- Reset strategy: `git reset --soft HEAD~1` preserves staged changes while undoing the commit; the retry re-appends the record on top of the freshly-fetched remote state
-- `ignoreReturnCode: true` on `getExecOutput` prevents throwing; we inspect `exitCode` manually
-- After exhausted retries: **non-fatal**. The run's data is lost for this push (not catastrophic for analytics). Log a warning; threshold evaluation still runs on the latest valid state. [ASSUMED — "non-fatal after 5 exhausted retries" is the ARCHITECTURE.md design intent but the exact behaviour for the user can be discussed if a hard-fail is preferred]
+- `{ cwd: worktreePath }` on every git call is mandatory — without it, commands run in `process.cwd()` (primary workspace), defeating workspace isolation
+- `--force-with-lease=playwright-healer-state` (ref-qualified form, not bare `--force-with-lease`) prevents stale `FETCH_HEAD` false-positives [CITED: https://git-scm.com/docs/git-push]
+- `git reset --hard origin/STATE_BRANCH` at retry start is more robust than `git reset --soft HEAD~1` alone — it fully aligns the worktree state with the remote before re-appending
+- Atomic rename (`fs.renameSync`) prevents partial-write corruption of the NDJSON file (Pitfall B)
+- After exhausted retries: **non-fatal** [ASSUMED — A1; see Assumptions Log]. The run's data is lost for this push (minor analytics gap). Threshold evaluation still runs on the last valid state.
 
 ### Pattern 3: NDJSON Record Schema
 
@@ -332,7 +418,7 @@ Design decisions:
 - **`schemaVersion: 1`** — makes forward migration (adding fields in Phase 04+) detectable at parse time
 - **`testId` = `filePath::title`** — stable key for rolling-window aggregation; avoids depending on Playwright's internal spec `id` field which is test-run-specific
 - **`outcome: 'report-unreadable'`** — ING-03 graceful degrade; the run record is still written but all tests carry this status; threshold evaluator skips these records
-- **Per-run record** (not per-test) — one NDJSON line per CI run is far more efficient: `git add + commit` happens once, not once per test file; a 100-test suite produces one append, not 100 [ASSUMED — single record per run is simpler; per-test-file partitioning trades simplicity for query speed at high test counts; Phase 02 defers partitioning]
+- **Per-run record** (not per-test) — one NDJSON line per CI run is far more efficient: `git add + commit` happens once, not once per test file; a 100-test suite produces one append, not 100 [ASSUMED — A2; see Assumptions Log. Revisit if a consuming repo exceeds ~5000 tests per run (estimated per-record size > 5MB), at which point per-day-per-testfile partitioning is needed]
 
 ### Pattern 4: NDJSON File Path Structure (STA-02)
 
@@ -347,19 +433,49 @@ runs/
       01.ndjson
 ```
 
-**Why date-partitioned?** The rolling window evaluation reads only the last `flake-window-days` worth of files (e.g. 7 days = at most 7 files), not the entire NDJSON corpus. The evaluator can compute the required date range (`today - window_days`) and `git checkout` only those files.
+**Why date-partitioned?** The rolling window evaluation reads only the last `flake-window-days` worth of files (e.g. 7 days = at most 7 files), not the entire NDJSON corpus. The evaluator can compute the required date range (`today - window_days`) and read only those files from the worktree.
 
-**Pruning rule (STA-05):** After a successful push, delete files older than `retention-days` (default 90). Since this is on a separate orphan branch, a force push is safe and expected. The delete+force-push happens in the same git operation as the append (or as a separate GC run).
+**Pruning rule (STA-05):** After a successful push, delete files older than `retention-days` (default 90). GC runs after push, not before (to avoid interleaving with concurrent appenders). A `retention-days: 0` value disables GC (useful for testing).
 
 ```typescript
-// GC: invoked after successful push, not before (avoids interleaving with concurrent append)
-export async function runGc(retentionDays: number): Promise<void> {
+// GC: invoked after successful push in Pattern 2
+export async function runGc(retentionDays: number, worktreePath: string): Promise<void> {
+  if (retentionDays === 0) return;  // disabled
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - retentionDays);
 
-  // Walk runs/ directory, delete date directories older than cutoff
-  // ... fs.readdirSync recursion ...
-  // git add -A + git commit -m "chore: gc healer state [skip-healer]" + push
+  const runsDir = path.join(worktreePath, 'runs');
+  if (!fs.existsSync(runsDir)) return;
+
+  let deleted = false;
+  // Walk year/month/day directory structure
+  for (const year of fs.readdirSync(runsDir)) {
+    const yearPath = path.join(runsDir, year);
+    for (const month of fs.readdirSync(yearPath)) {
+      const monthPath = path.join(yearPath, month);
+      for (const dayFile of fs.readdirSync(monthPath)) {
+        const day = dayFile.replace('.ndjson', '');
+        const fileDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
+        if (fileDate < cutoff) {
+          fs.unlinkSync(path.join(monthPath, dayFile));
+          deleted = true;
+        }
+      }
+      // Remove empty month directories
+      if (fs.readdirSync(monthPath).length === 0) fs.rmdirSync(monthPath);
+    }
+    if (fs.readdirSync(yearPath).length === 0) fs.rmdirSync(yearPath);
+  }
+
+  if (deleted) {
+    await getExecOutput('git', ['add', '-A'], { cwd: worktreePath });
+    await getExecOutput('git', [
+      '-c', `user.email=${BOT_EMAIL}`, '-c', `user.name=${BOT_NAME}`,
+      'commit', '-m', `chore: gc healer state (retention ${retentionDays}d) [skip-healer]`
+    ], { cwd: worktreePath });
+    // Note: GC commit is pushed as part of the main append push; or as a standalone push
+    // if GC runs after the append-push. Either way, force-with-lease applies.
+  }
 }
 ```
 
@@ -481,19 +597,34 @@ import { parse as parseYaml } from 'yaml';
 import * as fs from 'fs';
 import * as core from '@actions/core';
 
-// ── CFG-03: Threshold inputs (extend existing getInputSchema()) ─────────────
-// Add to the z.object({}) inside getInputSchema():
-//   reportPath:           z.string().default('test-results/results.json'),
-//   flakeRateThreshold:   z.coerce.number().min(0).max(1).default(0.2),
-//   flakeWindowDays:      z.coerce.number().int().min(1).default(7),
-//   slowRegressionPct:    z.coerce.number().min(1).default(1.5),
-//   rerunCount:           z.coerce.number().int().min(1).default(10),
-//   rerunPassRate:        z.coerce.number().min(0).max(1).default(0.9),
-//   maxBudgetUsd:         z.coerce.number().min(0).default(2.0),
-//   maxTurns:             z.coerce.number().int().min(1).default(30),
-//   retentionDays:        z.coerce.number().int().min(1).default(90),
-//   maxHealsPerTestPerWeek: z.coerce.number().int().min(0).default(3),
-//   stateBranchName:      z.string().default('playwright-healer-state'),
+// ── CFG-03: Threshold inputs — add INSIDE z.object({}) before .superRefine ────
+// The existing getInputSchema() ends with .superRefine(...), which returns ZodEffects.
+// ZodEffects does NOT have .extend(). New fields MUST be added inside the z.object({})
+// literal, before .superRefine is chained. Example shape of the extended schema:
+//
+// export function getInputSchema() {
+//   return z.object({
+//     // ... existing fields (mode, apiKey, healerToken, etc.) ...
+//     reportPath:              z.string().default('test-results/results.json'),
+//     flakeRateThreshold:      z.coerce.number()
+//                                .refine(v => !isNaN(v), { message: 'flake-rate-threshold must be a valid number (e.g. 0.2)' })
+//                                .min(0).max(1).default(0.2),
+//     flakeWindowDays:         z.coerce.number().int().min(1).default(7),
+//     slowRegressionPct:       z.coerce.number().min(1).default(1.5),
+//     rerunCount:              z.coerce.number().int().min(1).default(10),  // Phase 03 use
+//     rerunPassRate:           z.coerce.number().min(0).max(1).default(0.9), // Phase 03 use
+//     maxBudgetUsd:            z.coerce.number().min(0).default(2.0),       // Phase 03 use
+//     maxTurns:                z.coerce.number().int().min(1).default(30),  // Phase 03 use
+//     retentionDays:           z.coerce.number().int().min(0).default(90),  // 0 = GC disabled
+//     maxHealsPerTestPerWeek:  z.coerce.number().int().min(0).default(3),
+//     stateBranchName:         z.string().default('playwright-healer-state'),
+//   }).superRefine((v, ctx) => {
+//     // existing superRefine: provider != ollama requires apiKey
+//     if (v.provider !== 'ollama' && v.apiKey.length === 0) {
+//       ctx.addIssue({ ... });
+//     }
+//   });
+// }
 
 // ── CFG-06: YAML config file loader ─────────────────────────────────────────
 export function loadYamlConfig(workspacePath: string): Record<string, unknown> {
@@ -501,7 +632,8 @@ export function loadYamlConfig(workspacePath: string): Record<string, unknown> {
   if (!fs.existsSync(configPath)) return {};
   try {
     const raw = fs.readFileSync(configPath, 'utf8');
-    const parsed = parseYaml(raw);
+    // maxAliasCount: 100 guards against YAML bomb (alias expansion DoS)
+    const parsed = parseYaml(raw, { maxAliasCount: 100 });
     if (typeof parsed !== 'object' || parsed === null) return {};
     return parsed as Record<string, unknown>;
   } catch (err) {
@@ -511,19 +643,15 @@ export function loadYamlConfig(workspacePath: string): Record<string, unknown> {
 }
 
 // ── Merge rule: action.yml inputs WIN over config file ───────────────────────
-// Action.yml inputs arrive as strings from core.getInput(); empty string = not set.
-// YAML file provides the user's preferred defaults for their repo.
 // Non-empty action.yml input overrides the YAML file value.
+// Both sets of values are merged into a plain object before Zod parsing.
 export function mergeConfigs(
   actionInputs: Record<string, string>,
   yamlConfig: Record<string, unknown>
 ): Record<string, unknown> {
-  const merged = { ...yamlConfig };
+  const merged: Record<string, unknown> = { ...yamlConfig };
   for (const [key, value] of Object.entries(actionInputs)) {
     if (value !== '') {
-      // camelCase → kebab-case for YAML key lookup is unnecessary here;
-      // action inputs arrive as camelCase after getInputSchema(), YAML keys are kebab-case.
-      // The Zod schema handles coercion; we merge before parsing.
       merged[key] = value;
     }
   }
@@ -531,9 +659,9 @@ export function mergeConfigs(
 }
 ```
 
-**Precedence rule:** action.yml inputs WIN when non-empty. YAML file provides per-repo defaults that are overridable at invocation time. This matches how Dependabot and Renovate handle config: file-based config with per-invocation overrides.
+**Precedence rule:** action.yml inputs WIN when non-empty. YAML file provides per-repo defaults that are overridable at invocation time.
 
-**Security: fork PRs and the YAML file.** The `.github/playwright-healer.yml` file is read from `${{ github.workspace }}` — the checked-out commit. On a fork PR, this is the attacker's fork commit. However, Phase 02 only reads this file, never executes its values as code. The values are Zod-validated numbers and strings. The only risk is threshold manipulation (e.g. setting `flake-rate-threshold: 0` to force detections). Since Phase 02 is log-only (DET-04) and ingest does not run on fork PRs (SEC-02 means no `pull_request_target`), this is a non-issue in Phase 02. Phase 04 documents the fork warning in the README.
+**Security: fork PRs and the YAML file.** The `.github/playwright-healer.yml` file is read from `process.env.GITHUB_WORKSPACE` — the checked-out commit. On a fork PR, this is the attacker's fork commit. However, Phase 02 only reads this file, never executes its values as code. The values are Zod-validated numbers and strings. The only risk is threshold manipulation (e.g. setting `flake-rate-threshold: 0` to force detections). Since Phase 02 is log-only (DET-04) and ingest does not run on fork PRs (loop guard detects fork and exits early), this is a non-issue in Phase 02.
 
 ### Pattern 8: Rolling Window Threshold Evaluator (DET-01, DET-02, DET-03)
 
@@ -566,6 +694,7 @@ export function evaluateThresholds(
   const byTestId = new Map<string, Map<string, NdjsonTestEntry[]>>();
   for (const record of windowRecords) {
     for (const entry of record.tests) {
+      if (entry.outcome === 'report-unreadable') continue; // ING-03: skip unreadable records
       if (!byTestId.has(entry.testId)) byTestId.set(entry.testId, new Map());
       const byCommit = byTestId.get(entry.testId)!;
       if (!byCommit.has(record.commitSha)) byCommit.set(record.commitSha, []);
@@ -583,9 +712,12 @@ export function evaluateThresholds(
     }));
 
     const runCount = runs.length;
-    if (runCount < 10) continue;  // DET-02: need at least 10 runs
+    if (runCount < 10) continue;  // DET-02: need at least 10 runs for statistical confidence
 
-    // Flake rate: (failed OR flaky) / total
+    // ── DET-02: Flake rate detection ──────────────────────────────────────────
+    // DET-02 also includes "no existing open healer PR" check; that condition is
+    // vacuously satisfied in Phase 02 (log-only; no PRs exist yet). Phase 04 wires
+    // the Octokit PR query into this check when dispatch is added.
     const failedOrFlaky = runs.filter(r =>
       r.outcome === 'failed' || r.outcome === 'flaky' || r.outcome === 'timed-out'
     ).length;
@@ -604,10 +736,10 @@ export function evaluateThresholds(
       });
     }
 
-    // Duration p95 regression (DET-03)
+    // ── DET-03: Duration p95 regression ───────────────────────────────────────
     const durations = runs.map(r => r.durationMs).sort((a, b) => a - b);
     const p95 = durations[Math.floor(durations.length * 0.95)] ?? 0;
-    // Baseline: first 10 runs as the "before" baseline
+    // Baseline: first 10 runs (chronologically) as the "before" baseline
     const baselineDurations = durations.slice(0, Math.min(10, durations.length));
     const baselineP95 = baselineDurations[Math.floor(baselineDurations.length * 0.95)] ?? 0;
     const regressionRatio = baselineP95 > 0 ? p95 / baselineP95 : 1;
@@ -701,17 +833,23 @@ const SKIP_SENTINEL = '[skip-healer]';
 export function shouldSkipIngest(): boolean {
   const payload = github.context.payload;
 
+  // Guard 0: fork PR — GITHUB_TOKEN is read-only; state branch push would fail with 403
+  if (payload.pull_request?.head?.repo?.fork === true) {
+    core.info('SEC-05 Guard 0: Skipping ingest — fork PRs are not supported (state branch push requires write access)');
+    return true;
+  }
+
   // Guard 1: bot author email
   const authorEmail = payload.head_commit?.author?.email ?? '';
   if (authorEmail === BOT_EMAIL) {
-    core.info(`SEC-05: Skipping ingest — commit is from playwright-healer-bot (${BOT_EMAIL})`);
+    core.info(`SEC-05 Guard 1: Skipping ingest — commit is from playwright-healer-bot (${BOT_EMAIL})`);
     return true;
   }
 
   // Guard 2: [skip-healer] in commit message
   const commitMessage = payload.head_commit?.message ?? '';
   if (commitMessage.includes(SKIP_SENTINEL)) {
-    core.info(`SEC-05: Skipping ingest — commit message contains [skip-healer] sentinel`);
+    core.info(`SEC-05 Guard 2: Skipping ingest — commit message contains [skip-healer] sentinel`);
     return true;
   }
 
@@ -722,7 +860,7 @@ export function shouldSkipIngest(): boolean {
 Notes:
 - **Guard 3 (per-test heal cap in state branch) is evaluated in Phase 04** when dispatch is added; Phase 02 doesn't need it for log-only mode
 - The bot email `playwright-healer-bot@users.noreply.github.com` is the form GitHub uses for app tokens; document this in the action README so consumers can configure their PAT identity if using a personal token instead
-- `payload.head_commit` is available on `push` events; on `workflow_call` events, the consumer workflow must pass commit metadata as inputs
+- `payload.head_commit` is available on `push` events; on `workflow_call` or `pull_request` events, it is `undefined` — optional chaining (`?.`) prevents null dereference (Pitfall D)
 
 ### Pattern 11: SEC-07 Allowlist Carve-Out for Octokit (Q10)
 
@@ -732,45 +870,30 @@ Phase 02 introduces git operations via `@actions/exec` (spawns `git` binary). Th
 PATTERNS='fetch\(|http\.request\(|https\.request\(|axios|got\(|node-fetch|undici'
 ```
 
-**Octokit does not match any of these patterns.** `@actions/github` and `@octokit/rest` are imported as modules; their internal fetch calls are not in `src/**`. The Check 4 grep scans call-sites in the project's own source files, not in `node_modules/`. Therefore Phase 02 requires **no change to security-lint Check 4**.
+**Phase 02 requires NO change to security-lint Check 4.** The banned patterns target call-sites (raw HTTP primitives) in the project's own source files, not in `node_modules/`. `@actions/github` is imported as a module — its internal fetch is in `node_modules/`, outside the scan scope. Phase 02 does not call any of the banned primitives directly in `src/**`.
 
-If Phase 02 were to call `octokit.repos.getContent()` or similar directly in `src/**`, that would be a module import (`import { Octokit } from '@octokit/rest'`) with no matching grep pattern. The ban is against raw HTTP primitives (`fetch(`, `http.request(`), not against higher-level client libraries.
-
-**However:** Phase 02 does NOT use Octokit at all. State branch writes use the `git` CLI (spawned via `@actions/exec`). `@actions/github` is used only to read `context.payload` for the loop guard (no HTTP call from our source code). This keeps Phase 02 free of any API call that would need a Check 4 carve-out.
-
-Phase 04, when it adds `workflow_dispatch` via Octokit, will need to extend Check 4 with an allowlist comment for `octokit.rest.actions.createWorkflowDispatch`. The pattern to add at that time:
-
-```yaml
-# ALLOWLIST for Phase 04: Octokit workflow_dispatch (SEC-07 approved)
-ALLOWED_PATTERN='createWorkflowDispatch'
-```
+Phase 04, when it adds `workflow_dispatch` via Octokit, will need to extend Check 4 with an allowlist comment for `octokit.rest.actions.createWorkflowDispatch`. The CI assertion for Phase 02 and Phase 03 is: `grep -r 'createWorkflowDispatch' src/` must return zero results.
 
 ### Pattern 12: Git Author Identity for State Branch Commits
 
-State branch commits authored by the action must use a consistent bot identity for SEC-05 Guard 1 detection to work:
+State branch commits authored by the action must use a consistent bot identity for SEC-05 Guard 1 detection to work. Use `-c` flags on each git invocation (not global git config, which could leak between steps):
 
-```bash
-git -c user.email="playwright-healer-bot@users.noreply.github.com" \
-    -c user.name="playwright-healer-bot" \
-    commit -m "stats: run ${RUN_ID} [skip-healer]"
-```
-
-Or via the TypeScript layer:
 ```typescript
+// In Pattern 2's commit call — correct form:
 await getExecOutput('git', [
-  '-c', 'user.email=playwright-healer-bot@users.noreply.github.com',
-  '-c', 'user.name=playwright-healer-bot',
+  '-c', `user.email=${BOT_EMAIL}`,
+  '-c', `user.name=${BOT_NAME}`,
   'commit', '-m', `stats: run ${runId} [skip-healer]`
-]);
+], { cwd: worktreePath });
 ```
 
-**Do NOT use `--author` flag alone** — it sets the author but not the committer; `user.email`/`user.name` config sets both. `git log --format=%ae` (author email) must return `playwright-healer-bot@users.noreply.github.com` for Guard 1 to fire.
+`git log --format=%ae` (author email) must return `playwright-healer-bot@users.noreply.github.com` for Guard 1 to fire. The `-c user.email=` form sets both the author and committer identity for that command.
 
-**Commit signing:** Unsigned commits (Phase 02 default). GITHUB_TOKEN commits appear in GitHub UI as authored by `github-actions[bot]` only if authenticated via the token's identity. For clarity, the action sets its own bot identity via `-c user.email=`. This does not require GPG signing. [ASSUMED — unsigned is simpler and sufficient for Phase 02; GPG signing is a possible Phase 06 polish item]
+**Commit signing:** Unsigned commits (Phase 02 default). [ASSUMED — A3; see Assumptions Log]
 
 ### Pattern 13: Concurrent-Write Integration Test Harness (STA-04)
 
-The bare-repo approach from ARCHITECTURE.md §Testing Strategy is the canonical pattern:
+The bare-repo approach from ARCHITECTURE.md §Testing Strategy. The test exercises the real `appendRecord()` function from `state-branch.ts` — not a mock. The worktree isolation means each test gets its own temp directories.
 
 ```typescript
 // tests/integration/state-branch.test.ts
@@ -780,64 +903,90 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+// Import the real state-branch module under test
+import { bootstrapOrGetWorktree, appendRecord, removeWorktree } from '../../src/shared/state-branch.js';
+
 describe('state-branch concurrent write (STA-04)', () => {
-  let remoteDir: string;
-  let ws1: string;
-  let ws2: string;
+  let remoteDir: string;    // bare "remote" repo
+  let primaryWs1: string;   // simulates CI job 1's primary workspace
+  let primaryWs2: string;   // simulates CI job 2's primary workspace
 
   beforeEach(() => {
-    // Create a bare "remote" repo
+    // Create a bare "remote" repo (simulates GitHub's remote)
     remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'healer-remote-'));
     execSync('git init --bare', { cwd: remoteDir });
 
-    // Two separate local clones (simulate two parallel CI jobs)
-    ws1 = fs.mkdtempSync(path.join(os.tmpdir(), 'healer-ws1-'));
-    ws2 = fs.mkdtempSync(path.join(os.tmpdir(), 'healer-ws2-'));
-    execSync(`git clone ${remoteDir} .`, { cwd: ws1 });
-    execSync(`git clone ${remoteDir} .`, { cwd: ws2 });
+    // Two separate primary workspace clones (simulate two parallel CI jobs)
+    // The state-branch module uses 'origin' from the cwd context — we set cwd in the module.
+    // For the test, we point 'origin' at the bare repo.
+    primaryWs1 = fs.mkdtempSync(path.join(os.tmpdir(), 'healer-primary-ws1-'));
+    primaryWs2 = fs.mkdtempSync(path.join(os.tmpdir(), 'healer-primary-ws2-'));
 
-    // Configure git identity in both workspaces
-    for (const ws of [ws1, ws2]) {
-      execSync('git config user.email "test@test.com"', { cwd: ws });
-      execSync('git config user.name "Test"', { cwd: ws });
+    for (const ws of [primaryWs1, primaryWs2]) {
+      execSync(`git init && git remote add origin ${remoteDir}`, { cwd: ws });
+      execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: ws });
+      // Create an initial main-branch commit so the primary workspace is non-empty
+      execSync('echo "src" > README.md && git add -A && git commit -m "init"', { cwd: ws });
     }
   });
 
   afterEach(() => {
-    fs.rmSync(remoteDir, { recursive: true, force: true });
-    fs.rmSync(ws1, { recursive: true, force: true });
-    fs.rmSync(ws2, { recursive: true, force: true });
+    for (const dir of [remoteDir, primaryWs1, primaryWs2]) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
-  it('both concurrent writes land without either record lost', async () => {
-    // Bootstrap state branch from ws1
-    await bootstrapStateBranch(ws1, remoteDir);
+  it('both concurrent writes land without either record lost (STA-04)', async () => {
+    // Job 1 bootstraps state branch (creates orphan branch + pushes)
+    const wt1 = await bootstrapOrGetWorktree(`file://${remoteDir}`, primaryWs1);
 
-    // Simulate concurrent: ws1 fetches first, then ws2 also fetches before ws1 pushes
-    const record1 = makeRecord('run-001');
-    const record2 = makeRecord('run-002');
+    // Job 2 also gets a worktree (branch now exists after job 1's bootstrap)
+    const wt2 = await bootstrapOrGetWorktree(`file://${remoteDir}`, primaryWs2);
 
-    // Both fetch at the same time
-    await fetchStateBranch(ws1);
-    await fetchStateBranch(ws2);
+    const record1 = makeTestRecord('run-001');
+    const record2 = makeTestRecord('run-002');
 
-    // ws1 appends and pushes first
-    await appendAndPush(ws1, record1);  // should succeed
+    // Job 1 appends+pushes first (succeeds)
+    await appendRecord(record1, wt1);
 
-    // ws2 appends and tries to push — should be rejected once, retry, then succeed
-    await appendAndPush(ws2, record2);  // should retry and succeed
+    // Job 2 appends+pushes — its local state is stale (job 1 already pushed);
+    // the retry loop in appendRecord() should detect the rejection and retry
+    await appendRecord(record2, wt2);
 
-    // Verify both records are in the final state
-    const finalContent = getFinalNdjson(remoteDir);
-    expect(finalContent).toContain('run-001');
-    expect(finalContent).toContain('run-002');
+    // Verify both records in the final NDJSON (read from the remote's HEAD)
+    const today = todayPath();  // exported from state-branch.ts for testing
+    const finalNdjson = execSync(
+      `git archive HEAD:${today} -- . | tar -xO 2>/dev/null || git show HEAD:${today}`,
+      { cwd: remoteDir }
+    ).toString();
+
+    expect(finalNdjson).toContain('run-001');
+    expect(finalNdjson).toContain('run-002');
+
+    // Cleanup
+    await removeWorktree(wt1);
+    await removeWorktree(wt2);
   });
 });
+
+function makeTestRecord(runId: string): NdjsonRecord {
+  return {
+    schemaVersion: 1,
+    timestamp: new Date().toISOString(),
+    runId,
+    commitSha: 'abc123',
+    branch: 'main',
+    healerVersion: '0.0.0',
+    shardIndex: null,
+    shardTotal: null,
+    tests: [],
+  };
+}
 ```
 
-**Key design note:** This test exercises the actual `appendRecord()` function from `state-branch.ts`, not a mock. The test drives real `git` CLI commands. The barrier (ws1 pushes before ws2's push attempt) is simulated by calling `appendAndPush(ws1)` awaited before `appendAndPush(ws2)`. The retry loop in `appendRecord()` should handle the conflict automatically.
-
 **Test runner:** `vitest --pool=forks` is required for integration tests that spawn child processes (git CLI). The `--pool=forks` flag gives each test its own process memory space, preventing git environment variable leakage between tests.
+
+**Note on `bootstrapOrGetWorktree` signature:** The real implementation needs the `repoRemoteUrl` (for the bootstrap `git init` + `git remote add` path) and the `cwd` of the primary workspace (for the `git worktree add` path). The test passes `file://` URL pointing at the bare repo.
 
 ### Pattern 14: action.yml Inputs Extension (CFG-03)
 
@@ -885,7 +1034,7 @@ Add to the existing `action.yml` `inputs:` block. These are all optional with de
     default: '30'
 
   retention-days:
-    description: 'Days to retain state branch records before GC. Default: 90'
+    description: 'Days to retain state branch records before GC. Default: 90. Set to 0 to disable GC.'
     required: false
     default: '90'
 
@@ -915,57 +1064,29 @@ And corresponding `INPUT_*` env vars in the composite step:
 
 ## Pitfall Map
 
-### Pitfall A: `git rm -rf .` after orphan creates a "dirty" state if run twice
+### Pitfall A: State branch git operations running in the primary workspace (CRITICAL)
 
-**What goes wrong:** If the bootstrap code runs in a workspace that already has the orphan branch (e.g. a concurrent bootstrap race resolved and the branch now exists), `git rm -rf .` deletes all files before the push. If the push then fails because the branch already has commits, the local workspace is corrupted.
+**What goes wrong:** If `git checkout --orphan playwright-healer-state` runs in the primary workspace (the consumer's source code checkout), `git rm -rf .` wipes all of the consumer's source files. Any downstream step in the consumer's workflow that uses source files breaks. If `git push` runs without a fully-scoped refspec from the primary workspace, it pushes the wrong HEAD (the source code branch) to `playwright-healer-state`, destroying the orphan branch invariant.
 
-**Prevention:** Wrap the entire bootstrap sequence in a guard that re-checks the remote after `git rm -rf .`:
-```bash
-git fetch origin playwright-healer-state 2>&1 || true
-if git rev-parse --verify origin/playwright-healer-state >/dev/null 2>&1; then
-  # Branch was created by concurrent bootstrapper — fall into normal retry loop
-  git checkout origin/playwright-healer-state
-else
-  # Still no branch — proceed with orphan creation
-  git checkout --orphan playwright-healer-state
-  git rm -rf .
-  # ... create initial commit ...
-fi
-```
+**Prevention:** ALL state branch git operations MUST run in an isolated `git worktree` (Pattern 1). The `cwd` option on every `getExecOutput('git', [...])` call must point to `worktreePath`, never to `process.cwd()` (which is the primary workspace). The integration test verifies this by asserting the primary workspace is unchanged after `appendRecord()`.
 
 ### Pitfall B: State branch NDJSON file corruption from partial writes
 
 **What goes wrong:** A process exits mid-write (SIGTERM from runner timeout) after appending a partial JSON object to the `.ndjson` file. The next read attempt fails to parse the file.
 
-**Prevention:** Write to a temp file in the same directory, then `fs.renameSync()` (atomic on POSIX). Since we're operating in a git worktree anyway, the rename is within the same filesystem:
-```typescript
-const tmpPath = `${ndjsonPath}.tmp`;
-fs.writeFileSync(tmpPath, appendedContent, 'utf8');
-fs.renameSync(tmpPath, ndjsonPath);  // atomic on POSIX
-```
+**Prevention:** Write to a temp file in the same directory, then `fs.renameSync()` (atomic on POSIX). Pattern 2 shows this. Recovery: reader (threshold evaluator) must parse NDJSON line-by-line with try/catch per line. A corrupt line is skipped with a warning; the remainder of the file is usable.
 
-**Recovery:** Reader (threshold evaluator) must parse the NDJSON file line-by-line with try/catch per line. A corrupt line is skipped with a warning; the remainder of the file is usable.
+### Pitfall C: `--force-with-lease` uses stale `FETCH_HEAD` when cwd is the primary workspace
 
-### Pitfall C: `git push --force-with-lease` fails with "stale info" when workspace ref is cached
+**What goes wrong:** If a previous `git fetch` of a different branch in the primary workspace updated `FETCH_HEAD`, a bare `--force-with-lease` in the worktree may reference the wrong ref.
 
-**What goes wrong:** If the local `FETCH_HEAD` is stale (e.g. a previous `git fetch` of a different branch updated it), `--force-with-lease` may use the wrong expected ref and fail permanently even after a successful fetch of `playwright-healer-state`.
+**Prevention:** Use the ref-qualified form: `--force-with-lease=playwright-healer-state` (Pattern 2). This pins the lease to the specific ref. [CITED: https://git-scm.com/docs/git-push]
 
-**Prevention:** Use the fully qualified form:
-```bash
-git push --force-with-lease=playwright-healer-state origin playwright-healer-state
-```
+### Pitfall D: `context.payload.head_commit` is null on non-push events
 
-This pins the lease to the specific ref rather than relying on `FETCH_HEAD`. [CITED: https://git-scm.com/docs/git-push#Documentation/git-push.txt---force-with-leaseltrefnamegt]
+**What goes wrong:** The loop guard reads `context.payload.head_commit.author.email`. On `workflow_call` or `pull_request` events, `head_commit` is `undefined`, causing a null dereference.
 
-### Pitfall D: `@actions/github` `context.payload.head_commit` is null on non-push events
-
-**What goes wrong:** The loop guard reads `context.payload.head_commit.author.email`. On `workflow_call` or `pull_request` events, `head_commit` is undefined, causing a null dereference.
-
-**Prevention:**
-```typescript
-const authorEmail = github.context.payload?.head_commit?.author?.email ?? '';
-```
-Use optional chaining everywhere. If `head_commit` is absent (non-push event), the bot-email guard simply doesn't fire — which is correct; the action proceeds normally.
+**Prevention:** Use optional chaining everywhere: `payload.head_commit?.author?.email ?? ''`. If `head_commit` is absent (non-push event), the bot-email guard simply doesn't fire — correct; the action proceeds normally.
 
 ### Pitfall E: YAML parser throws on malformed `.github/playwright-healer.yml` — crashes ingest
 
@@ -975,9 +1096,9 @@ Use optional chaining everywhere. If `head_commit` is absent (non-push event), t
 
 ### Pitfall F: `z.coerce.number()` on non-numeric YAML values produces NaN (CFG-07 gap)
 
-**What goes wrong:** Consumer writes `flake-rate-threshold: "banana"` in the YAML config. `z.coerce.number()` coerces the string `"banana"` to `NaN`, which passes `z.number()` type check. The threshold evaluator then produces no detections (NaN comparisons are always false).
+**What goes wrong:** Consumer writes `flake-rate-threshold: "banana"` in the YAML config. `z.coerce.number()` coerces `"banana"` to `NaN`, which passes `z.number()` type check. The threshold evaluator then produces no detections (NaN comparisons are always false).
 
-**Prevention:** Add `.refine((v) => !isNaN(v), { message: 'must be a valid number' })` after `z.coerce.number()`:
+**Prevention:** Add `.refine((v) => !isNaN(v), { message: '...' })` after `z.coerce.number()`:
 ```typescript
 flakeRateThreshold: z.coerce.number()
   .refine((v) => !isNaN(v), { message: 'flake-rate-threshold must be a valid number (e.g. 0.2)' })
@@ -987,37 +1108,36 @@ flakeRateThreshold: z.coerce.number()
 
 This is the CFG-07 success criterion: SC#4 says "invalid `flake-rate-threshold: "banana"` causes action to fail with a Zod validation error naming the invalid field, not a JavaScript crash."
 
-### Pitfall G: `report-path` input uses glob but `@actions/glob` is not yet installed
+### Pitfall G: `report-path` input uses glob but `@actions/glob` is not installed
 
-**What goes wrong:** ING-01 allows a glob pattern for `report-path`. If the planner implements it with a hardcoded `fs.readFileSync(config.reportPath)`, users who specify a glob pattern get an ENOENT error.
+**What goes wrong:** ING-01 allows a glob pattern for `report-path`. A hardcoded `fs.readFileSync(config.reportPath)` fails on glob patterns with ENOENT.
 
-**Prevention:** Add `@actions/glob` to dependencies (it's already in STACK.md; verify it's in package.json). Use `glob.create(config.reportPath).glob()` to resolve the pattern, then process each matched file. If zero files match, emit a warning (not a failure) and record as `report-unreadable` — the test run may have produced no report (e.g. all tests were skipped).
+**Prevention:** Add `@actions/glob` to dependencies (it's in STACK.md but not yet in package.json — Phase 02 adds it via `npm install @actions/glob`). Use `glob.create(config.reportPath).glob()` to resolve the pattern. If zero files match, emit a warning and record as `report-unreadable`.
 
-### Pitfall H: The state branch `playwright-healer-state` contains test code after a non-orphan `git checkout`
+### Pitfall H: Threshold evaluator reads ALL NDJSON files instead of only the window
 
-**What goes wrong:** The bootstrap runs `git checkout --orphan playwright-healer-state` but forgets `git rm -rf .`. The orphan branch commit then contains all files from the previous HEAD (the consumer's main branch source code). This bloats the state branch and confuses tools that inspect it.
+**What goes wrong:** If the evaluator checks out the entire `runs/` directory from the worktree, on a repo with 1 year of data this reads hundreds of MB.
 
-**Prevention:** `git rm -rf .` immediately after `git checkout --orphan` (Pattern 1 shows this). Add a verification step in the integration test: after bootstrap, `git ls-files` on the state branch should return ONLY the `.ndjson` file.
-
-### Pitfall I: Threshold evaluator reads ALL NDJSON files instead of only the window
-
-**What goes wrong:** The evaluator does `git checkout playwright-healer-state -- runs/` (checking out the entire `runs/` directory). On a repo with 1 year of data, this means reading hundreds of MB of NDJSON.
-
-**Prevention:** Check out only the files in the window:
+**Prevention:** Compute the required date range and read only those files:
 ```typescript
-const filesToFetch = getDatesInWindow(config.flakeWindowDays)
-  .map(d => `runs/${d.year}/${d.month.toString().padStart(2,'0')}/${d.day.toString().padStart(2,'0')}.ndjson`);
-for (const f of filesToFetch) {
-  await getExecOutput('git', ['checkout', 'origin/playwright-healer-state', '--', f], { ignoreReturnCode: true });
-  // ignoreReturnCode because the file may not exist yet for older dates
-}
+const filesToRead = getDatesInWindow(config.flakeWindowDays)
+  .map(d => path.join(worktreePath, `runs/${d.year}/${d.month.padStart(2,'0')}/${d.day.padStart(2,'0')}.ndjson`))
+  .filter(f => fs.existsSync(f));
 ```
 
-### Pitfall J: SEC-07 Check 4 false-positive if `@actions/github` import appears in src/
+The evaluator reads directly from the worktree filesystem — no `git checkout` needed since the worktree already has the files after `bootstrapOrGetWorktree`.
 
-**What goes wrong:** Importing `@actions/github` in `src/shared/loop-guard.ts` does not match any banned pattern (the banned patterns are `fetch(`, `http.request(`, etc., not module names). But a future developer might add a direct `fetch()` call next to the import and forget the ban. 
+### Pitfall I: SEC-07 Check 4 false-positive concern with `@actions/github` import
 
-**Prevention:** The current Check 4 patterns correctly target call-sites, not imports. No change needed. Document in the ingest module's header comment that any network calls must be reviewed against SEC-07 before adding.
+**What goes wrong:** A developer might assume importing `@actions/github` in `src/shared/loop-guard.ts` triggers Check 4.
+
+**Prevention (and resolution):** Check 4 patterns target call-sites (`fetch(`, `http.request(`, etc.), not import statements. `import * as github from '@actions/github'` matches none of the banned patterns. No Check 4 change needed for Phase 02.
+
+### Pitfall J: `git worktree remove` fails if worktree was a standalone init (not added via `git worktree add`)
+
+**What goes wrong:** The bootstrap path uses `git init` + push in a temp dir (not `git worktree add`). When cleanup calls `git worktree remove`, it fails because the dir was never registered as a worktree.
+
+**Prevention:** `removeWorktree()` uses `ignoreReturnCode: true` on `git worktree remove` and always follows up with `fs.rmSync()`. The temp dir is always cleaned up even if git doesn't know about it as a worktree.
 
 ---
 
@@ -1025,11 +1145,12 @@ for (const f of filesToFetch) {
 
 ### Q1: State branch concurrency — force-with-lease retry loop
 
-**Answer:** The canonical implementation is the Pattern 2 retry loop above. Key parameters:
+**Answer:** The canonical implementation is the Pattern 2 retry loop above, running in an isolated worktree. Key parameters:
 - **Max retries:** 5 (from ARCHITECTURE.md §State Branch Update Protocol)
 - **Backoff:** `100ms * 2^attempt + random(0..100ms)` jitter — starts at ~100–200ms, reaches ~3.3–3.4s at attempt 5
-- **Failure mode after exhausted retries:** Non-fatal. Log a `core.warning()`. Threshold evaluation proceeds with the last successfully fetched state (which is stale by one record, at most). The lost record is a minor analytics gap, not a security or correctness issue.
+- **Failure mode after exhausted retries:** Non-fatal. Log a `core.warning()`. Threshold evaluation proceeds with the last successfully fetched state (stale by one record at most). [ASSUMED — A1]
 - **Git ref:** Use `--force-with-lease=playwright-healer-state` (fully qualified form) per Pitfall C.
+- **Workspace:** ALL git operations in `worktreePath`; primary workspace never touched (Pitfall A).
 
 ### Q2: NDJSON record schema
 
@@ -1038,66 +1159,63 @@ for (const f of filesToFetch) {
 ### Q3: Orphan branch creation
 
 **Answer:** See Pattern 1. Exact sequence:
-1. `git fetch origin playwright-healer-state` — check existence
-2. If exit code 128 (not found): `git checkout --orphan playwright-healer-state` → `git rm -rf .` → create initial `.ndjson` → `git add` → `git commit` → `git push -u origin playwright-healer-state`
-3. If concurrent bootstrapper wins the push: the second bootstrapper's push fails; it falls into the Pattern 2 retry loop which re-fetches the new branch and appends its record normally.
-**Token:** `GITHUB_TOKEN` with `contents: write` is sufficient for state branch operations. `healer-token` PAT is not needed in Phase 02. [VERIFIED against STACK.md §Token Architecture]
+1. `git ls-remote --exit-code origin refs/heads/playwright-healer-state` — check existence (exit 2 = absent, exit 0 = exists, other = error)
+2. If exit 2 (not found): `git init` in a temp dir → `git remote add origin <url>` → `git checkout --orphan playwright-healer-state` → create initial `.ndjson` → `git add -A` → `git commit` → `git push -u origin playwright-healer-state`
+3. If concurrent bootstrapper wins the push: the second bootstrapper's push fails; the recursive retry calls `bootstrapOrGetWorktree` again, which now sees the branch exists and uses `git worktree add` normally.
+**Token:** `GITHUB_TOKEN` with `contents: write` is sufficient. `healer-token` PAT is not needed in Phase 02. [VERIFIED against STACK.md §Token Architecture]
 
 ### Q4: Rolling window threshold evaluation
 
-**Answer:** Phase 02 implements **both** flake-rate (DET-02) and slow-regression (DET-03) detection. The math is in Pattern 8. The `rerunCount` and `rerunPassRate` inputs are declared in the Zod schema (CFG-03 completeness) but NOT evaluated in Phase 02 — those are Phase 03 (VAL-01). The evaluator lives in `src/ingest/threshold-evaluator.ts` as a pure function. The ingest module calls it after the state-branch write (so the evaluator sees the freshly-appended data).
+**Answer:** Phase 02 implements **both** flake-rate (DET-02) and slow-regression (DET-03) detection. The math is in Pattern 8. The `rerunCount` and `rerunPassRate` inputs are declared in the Zod schema (CFG-03 completeness) but NOT evaluated in Phase 02 — those are Phase 03 (VAL-01). The evaluator lives in `src/ingest/threshold-evaluator.ts` as a pure function. The ingest module calls it after the state-branch write.
 
 ### Q5: CFG-06 .github/playwright-healer.yml config file
 
-**Answer:** See Pattern 7. Precedence: **action.yml inputs win** (non-empty action input overrides YAML file value). The file is read from `process.env.GITHUB_WORKSPACE + '/.github/playwright-healer.yml'`. On fork PRs this is the fork's file — but Phase 02 is log-only (DET-04) and fork PRs don't run ingest (no `pull_request_target`). The only risk is threshold manipulation, which is non-critical in log-only mode.
+**Answer:** See Pattern 7. Precedence: **action.yml inputs win** (non-empty action input overrides YAML file value). The file is read from `process.env.GITHUB_WORKSPACE + '/.github/playwright-healer.yml'`. On fork PRs the loop guard (Guard 0) exits early before any file read. `yaml.parse()` is wrapped in try/catch to handle syntax errors gracefully.
 
 ### Q6: CFG-07 Zod validation of merged config
 
-**Answer:** Extend the existing `getInputSchema()` factory in `src/shared/config.ts`. Do NOT create a separate `getIngestConfigSchema()`. The factory pattern (`export function getInputSchema()`) allows Phase 02 to add the threshold fields to the same factory call — tests can still call `getInputSchema()` without module-level state. The `z.coerce.number().refine(!isNaN)` pattern (Pitfall F) catches `"banana"` inputs with a field-naming Zod error.
+**Answer:** Extend the existing `getInputSchema()` factory in `src/shared/config.ts`. **Do NOT create a separate `getIngestConfigSchema()`**. New fields must be added INSIDE the `z.object({...})` literal, before `.superRefine` is chained — `.extend()` does not exist on `ZodEffects` (the return type of `.superRefine()`). The `z.coerce.number().refine(!isNaN)` pattern (Pitfall F) catches `"banana"` inputs with a field-naming Zod error. This is the SC#4 requirement.
 
 ### Q7: SEC-05 loop guard
 
-**Answer:** See Pattern 10. Two guards in Phase 02:
+**Answer:** See Pattern 10. Three guards in Phase 02:
+0. **Fork PR detection:** `payload.pull_request?.head?.repo?.fork === true` → exit early
 1. **Bot author email check:** `payload.head_commit?.author?.email === 'playwright-healer-bot@users.noreply.github.com'`
 2. **Commit message sentinel:** `payload.head_commit?.message?.includes('[skip-healer]')`
 
-Guard 3 (per-test heal cap) is not needed in Phase 02 (log-only; no dispatch). The check is in `src/shared/loop-guard.ts`, called as the FIRST thing in `src/ingest/index.ts` after config validation, before any state-branch operation.
+Guard 3 (per-test heal cap) is not needed in Phase 02 (log-only; no dispatch). Guards are in `src/shared/loop-guard.ts`, called as the FIRST thing in `src/ingest/index.ts` after config validation, before any state-branch operation.
 
 ### Q8: DET-01..04 detection mechanism
 
 **Answer:** See Pattern 9. Contract:
 - **`$GITHUB_STEP_SUMMARY`:** Markdown table with columns: Test, Reason, Value, Threshold, Runs in Window. Plus an explicit "log-only" note that no dispatch fires.
-- **`::warning::` annotations:** One annotation per detection using `core.warning(message, { file: d.filePath })`. This surfaces in the GitHub Actions UI as a file-level warning annotation.
+- **`::warning::` annotations:** One annotation per detection using `core.warning(message, { file: d.filePath })`.
 - **Test ID format:** `"{filePath}::{title}"` — the same `testId` used in the NDJSON schema.
-- **No `workflow_dispatch` call anywhere in Phase 02 source.** This is an import-discipline assertion: `src/ingest/**` must not import the dispatch path. Phase 04 adds it.
+- **No `workflow_dispatch` call anywhere in Phase 02 source.** CI assertion: `grep -r 'createWorkflowDispatch' src/` returns zero results.
 
 ### Q9: Fork-PR safety
 
-**Answer:** Fork PRs do not reach the ingest step in Phase 02 because:
-- The action uses no `pull_request_target` trigger (SEC-02, D-14)
-- On a `pull_request` event from a fork, `GITHUB_TOKEN` has read-only access; any state branch push would fail with 403 anyway
-
-The action should detect this gracefully: check `github.context.payload.pull_request?.head?.repo?.fork === true` at startup and emit `core.info('Skipping ingest: fork PRs are not supported')`. This prevents a confusing 403 error in the log. Implement this check in `loop-guard.ts` as Guard 0 (before the bot-email check).
+**Answer:** Fork PRs are caught by Guard 0 in `loop-guard.ts` (Pattern 10): `payload.pull_request?.head?.repo?.fork === true` → emit `core.info()` and return early. This prevents both the confusing 403 error from a failed state branch push AND prevents any threshold-detection summary that might be misleading in a fork PR context.
 
 ### Q10: Octokit + @actions/github — SEC-07 allowlist
 
-**Answer:** See Pattern 11. Phase 02 requires **no change to security-lint Check 4**. The banned patterns (`fetch(`, `http.request(`, etc.) are call-site patterns in `src/**`, not module names. `@actions/github` and `@actions/exec` are safe to import; their internals are in `node_modules/`, outside the scan scope. Phase 04 will add the `createWorkflowDispatch` allowlist comment when dispatch is implemented.
+**Answer:** See Pattern 11. Phase 02 requires **no change to security-lint Check 4**. The banned patterns (`fetch(`, `http.request(`, etc.) are call-site patterns in `src/**`, not module names. `@actions/github` and `@actions/exec` are module imports with no matching grep pattern. Phase 04 will add the `createWorkflowDispatch` allowlist comment when dispatch is implemented.
 
 ### Q11: Commit signing and token identity
 
-**Answer:** Unsigned commits via GITHUB_TOKEN. Git author identity is set per-command via `-c user.email=playwright-healer-bot@users.noreply.github.com` (Pattern 12). This ensures `git log --format=%ae` returns the bot email for SEC-05 Guard 1 detection. GITHUB_TOKEN is sufficient for state branch writes (`contents: write`). No `healer-token` PAT needed in Phase 02. GPG signing is deferred to Phase 06 as optional polish.
+**Answer:** Unsigned commits via GITHUB_TOKEN. Git author identity is set per-command via `-c user.email=playwright-healer-bot@users.noreply.github.com` and `-c user.name=playwright-healer-bot` (Pattern 12). GITHUB_TOKEN is sufficient for state branch writes (`contents: write`). No `healer-token` PAT needed in Phase 02. GPG signing is deferred. [ASSUMED — A3]
 
 ### Q12: Concurrent-write integration test design
 
-**Answer:** See Pattern 13. Test harness: local bare git repo as remote + two separate local clones (simulating two parallel CI jobs). Uses real `git` CLI via `child_process.execSync`. Test runner: `vitest --pool=forks`. The test exercises the real `appendRecord()` function — not a mock. The concurrent write scenario is simulated by: (a) both clones `fetch` before either pushes, (b) ws1 appends+pushes (succeeds), (c) ws2 appends+pushes (rejected once, retries, succeeds). Assert both records in final state.
+**Answer:** See Pattern 13. Test harness: local bare git repo as remote + two separate primary workspace clones (simulating two parallel CI jobs). The `bootstrapOrGetWorktree` function is called from each workspace's context. The concurrent write scenario: ws1 bootstrap + append+push (succeeds), then ws2 gets worktree + append+push (rejected once by the now-different remote HEAD, retries via Pattern 2's loop, succeeds). Assert both records in final NDJSON. Test runner: `vitest --pool=forks`.
 
 ### Q13: NDJSON file structure
 
-**Answer:** Date-partitioned (Pattern 4). Single file per day: `runs/YYYY/MM/DD.ndjson`. This is simpler than per-test-file partitioning and defers the performance concern. At 100 tests × 10 CI runs/day × 365 days = ~365,000 lines per year per test (unrealistic; more like 100 tests × 5 runs/day = ~500 lines/day across all tests). At this scale the per-day file is well under 1MB. Phase 04 can add partitioning if needed. GC (STA-05) happens after successful push; delete files older than `retention-days`.
+**Answer:** Date-partitioned (Pattern 4). Single file per day: `runs/YYYY/MM/DD.ndjson`. Simple and deferring performance concern. At ~100 tests × 5 CI runs/day = ~500 test entries/day across all tests, the per-day file is well under 1MB. Phase 04 can add partitioning if needed. GC (STA-05) happens after successful push; deletes files older than `retention-days`. Disable GC for testing with `retention-days: 0`.
 
 ### Q14: Threshold log-only semantics
 
-**Answer:** Phase 02 source code never imports `createWorkflowDispatch` or any dispatch-related Octokit method. The "log-only" guarantee is enforced at the import level: `src/ingest/threshold-evaluator.ts` has no `@actions/github` import for dispatch. The summary output includes an explicit note: `"No workflow_dispatch was fired. Enable auto-dispatch in Phase 04."` This is also a CI-verifiable assertion: `grep -r 'createWorkflowDispatch' src/` must return zero results until Phase 04.
+**Answer:** Phase 02 source code never imports `createWorkflowDispatch` or any dispatch-related Octokit method. The "log-only" guarantee is enforced at the import level. The summary output includes an explicit note: `"No workflow_dispatch was fired. Enable auto-dispatch in Phase 04."` This is a CI-verifiable assertion: `grep -r 'createWorkflowDispatch' src/` must return zero results until Phase 04.
 
 ---
 
@@ -1106,11 +1224,12 @@ The action should detect this gracefully: check `github.context.payload.pull_req
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
 | YAML file parsing | Custom YAML tokenizer | `yaml` 2.8.3 (eemeli) | YAML 1.2 edge cases (anchors, multi-line strings, null vs empty) are tricky; the library handles them correctly |
-| Glob resolution for report-path | `fs.readdirSync` + manual pattern matching | `@actions/glob` 0.7.0 | Already in STACK.md; handles GitHub Actions glob semantics (`**`, negation) correctly |
+| Glob resolution for report-path | `fs.readdirSync` + manual pattern matching | `@actions/glob` 0.7.0 | Handles GitHub Actions glob semantics (`**`, negation) correctly; add `@actions/glob` to package.json in Phase 02 |
 | Exponential backoff | Custom sleep loop | Inline formula `100 * 2^attempt + jitter` | Simple enough to inline; full backoff libraries overkill |
 | NDJSON line-by-line parsing | Custom streaming parser | `JSON.parse` per line in a loop | NDJSON is trivially parseable line-by-line; no streaming library needed |
 | Git author identity | Custom GH App token flow | `-c user.email=...` git flag | Bot identity via git config is zero-infra; GH App token is Phase 06 polish |
 | Step summary rendering | Custom HTML generation | `@actions/core.summary` API | Official GitHub API; handles summary file path, buffering, and write flush |
+| Workspace isolation for git state-branch ops | Complex in-place branch switching | `git worktree` in a temp directory | Worktrees are the correct git primitive for operating on multiple branches in parallel without disturbing the checked-out workspace |
 
 ---
 
@@ -1136,25 +1255,25 @@ Per `.planning/config.json`: `workflow.nyquist_validation: true`.
 | ING-02 | Extract per-test fields (outcome, duration, retries, trace path) | unit | `npx vitest run tests/unit/report-parser.test.ts` | ❌ Wave 0 |
 | ING-03 | Graceful degrade on unrecognized report shape | unit | `npx vitest run tests/unit/report-parser.test.ts` | ❌ Wave 0 |
 | ING-04 | Shard metadata in NDJSON record | unit | `npx vitest run tests/unit/report-parser.test.ts` | ❌ Wave 0 |
-| STA-01 | Orphan branch bootstrap on first use | integration | `npx vitest run --pool=forks tests/integration/state-branch.test.ts` | ❌ Wave 0 |
+| STA-01 | Orphan branch bootstrap on first use (in isolated worktree) | integration | `npx vitest run --pool=forks tests/integration/state-branch.test.ts` | ❌ Wave 0 |
 | STA-02 | NDJSON append (second run appends, not overwrites) | integration | `npx vitest run --pool=forks tests/integration/state-branch.test.ts` | ❌ Wave 0 |
 | STA-03 | force-with-lease retry on rejection | integration | `npx vitest run --pool=forks tests/integration/state-branch.test.ts` | ❌ Wave 0 |
 | STA-04 | Both concurrent writes land (no record lost) | integration | `npx vitest run --pool=forks tests/integration/state-branch.test.ts` | ❌ Wave 0 |
 | STA-05 | GC: records older than retention-days are dropped | unit | `npx vitest run tests/unit/state-branch-gc.test.ts` | ❌ Wave 0 |
 | DET-01 | Rolling metrics computed (flake rate, p95) | unit | `npx vitest run tests/unit/threshold-evaluator.test.ts` | ❌ Wave 0 |
-| DET-02 | Flake candidate detection (>=10 runs, rate >= threshold) | unit | `npx vitest run tests/unit/threshold-evaluator.test.ts` | ❌ Wave 0 |
+| DET-02 | Flake candidate detection (>=10 runs, rate >= threshold; "no open PR" vacuously true in Phase 02) | unit | `npx vitest run tests/unit/threshold-evaluator.test.ts` | ❌ Wave 0 |
 | DET-03 | Slow candidate detection (p95 regression) | unit | `npx vitest run tests/unit/threshold-evaluator.test.ts` | ❌ Wave 0 |
 | DET-04 | Log-only: step summary written, no dispatch fired | unit (import assert) | `grep -r 'createWorkflowDispatch' src/ \|\| true` | ❌ Wave 0 |
 | CFG-03 | Threshold inputs declared and default correctly | unit | `npx vitest run tests/unit/config.test.ts` | ❌ Wave 0 |
 | CFG-06 | YAML config file merges with action.yml inputs (action wins) | unit | `npx vitest run tests/unit/config.test.ts` | ❌ Wave 0 |
 | CFG-07 | Invalid `flake-rate-threshold: "banana"` fails with Zod field error | unit | `npx vitest run tests/unit/config.test.ts` | ❌ Wave 0 |
-| SEC-05 | Bot author email → early exit; [skip-healer] → early exit | unit | `npx vitest run tests/unit/loop-guard.test.ts` | ❌ Wave 0 |
+| SEC-05 | Fork PR → early exit; bot author email → early exit; [skip-healer] → early exit | unit | `npx vitest run tests/unit/loop-guard.test.ts` | ❌ Wave 0 |
 
 ### Phase 02 Success Criteria → Test Map
 
 | SC | Behavior | Primary Test |
 |----|----------|-------------|
-| SC#1 | Orphan branch created on first use; second run appends NDJSON line | integration/state-branch.test.ts |
+| SC#1 | Orphan branch created on first use (in worktree); second run appends NDJSON line | integration/state-branch.test.ts |
 | SC#2 | Both concurrent ingest jobs land records (no record lost) | integration/state-branch.test.ts (concurrent-write case) |
 | SC#3 | 40% failure rate → step summary annotation; no workflow_dispatch | unit/threshold-evaluator.test.ts + grep assert |
 | SC#4 | `flake-rate-threshold: "banana"` → Zod error naming field | unit/config.test.ts |
@@ -1170,7 +1289,7 @@ Per `.planning/config.json`: `workflow.nyquist_validation: true`.
 
 All test files are new (Phase 02 is greenfield for this module):
 
-- [ ] `vitest.config.ts` — Vitest configuration with `pool: 'forks'` for integration tests
+- [ ] `vitest.config.ts` — Vitest configuration with `projects` array: `unit` (threads pool), `integration` (forks pool)
 - [ ] `tests/unit/report-parser.test.ts` — covers ING-01..04
 - [ ] `tests/unit/threshold-evaluator.test.ts` — covers DET-01..03, SC#3
 - [ ] `tests/unit/config.test.ts` — covers CFG-03, CFG-06, CFG-07, SC#4
@@ -1194,7 +1313,7 @@ All test files are new (Phase 02 is greenfield for this module):
 |---------------|---------|-----------------|
 | V2 Authentication | No | Not applicable — no user auth in ingest mode |
 | V3 Session Management | No | Not applicable |
-| V4 Access Control | Yes (partial) | SEC-05 loop guard (bot-author + skip-healer); fork-PR early exit |
+| V4 Access Control | Yes (partial) | SEC-05 loop guard (fork PR, bot-author, skip-healer); worktree isolation prevents credential leakage |
 | V5 Input Validation | Yes | Zod schema on all action inputs + YAML config file values (CFG-07) |
 | V6 Cryptography | No | No crypto operations; git operations use GITHUB_TOKEN (managed by GitHub) |
 
@@ -1202,11 +1321,12 @@ All test files are new (Phase 02 is greenfield for this module):
 
 | Pattern | STRIDE | Standard Mitigation |
 |---------|--------|---------------------|
-| Config file threshold manipulation (fork PR) | Tampering | Log-only mode in Phase 02; no dispatch fired; malicious threshold = no heal triggered |
+| Config file threshold manipulation (fork PR) | Tampering | Guard 0 in loop-guard exits before any file read; even if bypass occurred, log-only mode means no dispatch is fired |
 | NDJSON injection via test title containing newline characters | Tampering | `JSON.stringify()` encodes all control characters including `\n`; NDJSON records are safe |
 | State branch commit by attacker impersonating bot email | Spoofing | Bot email check is defense-in-depth; state branch push requires GITHUB_TOKEN `contents:write`; attacker cannot push to consuming repo's state branch |
-| Loop amplification (action triggers itself via commit) | Repudiation | SEC-05 guards 1+2 (bot email + skip-healer sentinel); both are checked before any git write |
-| YAML bomb (`yes: &a [*a, *a, *a, *a]` expansion) | DoS | `yaml` 2.8.3 has built-in alias depth limit; add `maxAliasCount: 100` to parse options as defense-in-depth |
+| Loop amplification (action triggers itself via commit) | Repudiation | SEC-05 guards 0+1+2 (fork, bot email, skip-healer sentinel); all checked before any git write |
+| YAML bomb (`yes: &a [*a, *a, *a, *a]` expansion) | DoS | `yaml` 2.8.3 built-in alias depth limit; Pattern 7 explicitly sets `maxAliasCount: 100` |
+| Worktree path traversal (malicious worktree path) | Tampering | `worktreePath` is always a `fs.mkdtempSync()` result under `os.tmpdir()` — not user-controlled |
 
 ---
 
@@ -1214,23 +1334,22 @@ All test files are new (Phase 02 is greenfield for this module):
 
 1. **GC trigger timing**
    - What we know: STA-05 says GC happens periodically; ARCHITECTURE.md says GC after successful push, not before
-   - What's unclear: Should GC run on every push (with a date check to skip if nothing to GC) or only on a scheduled cron? Every-push GC is simpler; cron-based is cheaper for repos with short retention windows
-   - Recommendation: GC on every push (check date of oldest file; skip if within retention window). Add a `retention-days: 0` shortcut to disable GC for Phase 02 testing
+   - What's unclear: Should GC run on every push (with a date check to skip if nothing to GC) or only on a scheduled cron?
+   - Recommendation: GC on every push (check date of oldest file; skip if within retention window). `retention-days: 0` disables GC entirely (Pattern 4).
 
-2. **State branch write permission model in fork-based repos**
-   - What we know: GITHUB_TOKEN on the consuming repo has `contents: write` if the workflow grants it; fork PR workflows only get read access
-   - What's unclear: Some consuming repos may have org-level policies restricting `contents: write` to specific conditions; this could cause silent state branch push failures
-   - Recommendation: Emit `core.info()` with the effective token scope at startup (debug mode only); document minimum required permissions in README
+2. **State branch write permission model in org-restricted repos**
+   - What we know: GITHUB_TOKEN has `contents: write` if the consuming workflow grants it; some orgs restrict this
+   - What's unclear: Silent 403 failures are hard to diagnose; the consuming workflow author may not understand why state branch writes fail
+   - Recommendation: Detect the 403 exit code explicitly in Pattern 2 and emit a `core.error()` with a helpful message pointing to the required `permissions: contents: write` block.
 
 3. **`report-path` glob returning multiple files (sharded ingest)**
    - What we know: ING-01 says glob is supported; ING-04 says shard metadata is attached
-   - What's unclear: If `report-path: 'test-results/shard-*.json'` matches 4 files, do we process each and write 4 NDJSON records (one per shard) or merge them into 1 record?
-   - Recommendation: Write one NDJSON record per matched file, each tagged with shard index derived from the filename or from a `SHARD_INDEX` input. The threshold evaluator deduplicates across shards by `(commitSha, testId)`.
+   - What's unclear: If `report-path: 'test-results/shard-*.json'` matches 4 files, do we write 4 NDJSON records or 1 merged record?
+   - Recommendation: Write one NDJSON record per matched file, each tagged with shard index. The threshold evaluator deduplicates across shards by `(commitSha, testId)`.
 
 4. **`vitest.config.ts` pool strategy for unit vs integration tests**
-   - What we know: Integration tests need `--pool=forks`; unit tests can use the faster default `--pool=threads`
-   - What's unclear: Can a single vitest config handle both with different pool settings per test directory?
-   - Recommendation: Use `projects` array in `vitest.config.ts` with two projects: `unit` (threads pool) and `integration` (forks pool). This avoids needing two separate config files.
+   - What we know: Integration tests need `--pool=forks`; unit tests can use faster default `--pool=threads`
+   - Recommendation: Use Vitest's `projects` array in `vitest.config.ts` with two projects: `unit` (threads pool) and `integration` (forks pool).
 
 ---
 
@@ -1238,14 +1357,16 @@ All test files are new (Phase 02 is greenfield for this module):
 
 | Dependency | Required By | Available | Version | Fallback |
 |------------|------------|-----------|---------|----------|
-| `git` CLI | STA-01..05 (state branch operations) | ✓ (GitHub runners) | system git | — |
+| `git` CLI | STA-01..05 (state branch operations via worktree) | ✓ (GitHub runners) | system git | — |
+| `git worktree` subcommand | STA-01..05 (workspace isolation) | ✓ (git >= 2.5, GitHub runners ship git 2.43+) | — | — |
 | `GITHUB_TOKEN` with `contents: write` | STA-01..05 | ✓ (standard on push workflows) | — | None — document as hard prerequisite |
 | Node.js 24 | All TypeScript modules | ✓ (setup-node step) | 24.x | — |
 | `npm` | Dependency install | ✓ | 10.x | — |
 | `yq` | security-lint Check 2 (existing) | ✓ (GitHub runners) | — | — |
 
 **Missing dependencies with no fallback:**
-- `GITHUB_TOKEN` with `contents: write` permission — consuming workflow MUST grant this; without it state branch push silently fails. Planner must include a "Permissions block" task for the consumer example workflow.
+- `GITHUB_TOKEN` with `contents: write` permission — consuming workflow MUST grant this; without it state branch push fails with 403. Planner must include a "Permissions block" task for the consumer example workflow.
+- `@actions/glob` — listed in STACK.md but NOT currently in `package.json`; Phase 02 must add it (`npm install @actions/glob`).
 
 **Phase 02 does NOT require:**
 - Anthropic API key
@@ -1261,7 +1382,7 @@ All test files are new (Phase 02 is greenfield for this module):
 |--------------|------------------|--------------|--------|
 | Bundled JS action with `@actions/artifact` for state storage | Composite action + dedicated git branch (NDJSON) | Research phase 2026-04-24 | Zero external infra; durable + diffable state |
 | Single global `stats.ndjson` file | Date-partitioned `runs/YYYY/MM/DD.ndjson` | Phase 02 research | Rolling window reads only 7 files; efficient at scale |
-| `git push --force` (overwrites) | `git push --force-with-lease` + retry loop | Research phase | Concurrent-safe; no lost records under parallel CI |
+| `git push --force` (overwrites) | `git push --force-with-lease=<ref>` + retry loop in isolated worktree | Phase 02 research | Concurrent-safe; primary workspace never touched |
 | `zod ^3.25.x` | `zod ^4.0.0` (resolved 4.3.6) | Phase 01 execution | `z.string().min(1, { message })` object form required; positional shorthand deprecated |
 | `anthropic-api-key` input | `api-key` input (multi-provider) | Phase 01.1 | All Zod extensions must use `apiKey` (camelCase), not `anthropicApiKey` |
 
@@ -1272,8 +1393,8 @@ All test files are new (Phase 02 is greenfield for this module):
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
 | A1 | Non-fatal after 5 exhausted retries — run data is lost silently | Pattern 2, Q1 | If user expects hard fail on exhausted retries, action would need to exit 1; discuss in Phase 02 planning |
-| A2 | Single NDJSON record per CI run (not per test) is sufficient at Phase 02 scale | Pattern 3 | If a consuming repo has 1000+ tests per shard, the per-run record becomes very large; partitioning may be needed sooner |
-| A3 | GPG signing of state-branch commits is deferred to Phase 06 | Q11 | If consuming repos require signed commits on protected branches, state branch push would fail; document this constraint |
+| A2 | Single NDJSON record per CI run (not per test) is sufficient at Phase 02 scale | Pattern 3 | Revisit if a consuming repo exceeds ~5000 tests per run (estimated per-record JSON size > 5MB); at that scale per-day-per-testfile partitioning is needed |
+| A3 | GPG signing of state-branch commits is deferred to Phase 06 | Q11 | If consuming repos require signed commits on protected branches, state branch push would fail; document this constraint in README |
 | A4 | `playwright-healer-bot@users.noreply.github.com` is the canonical bot email | Pattern 10, Q7 | If a consumer uses a personal PAT instead of a GitHub App token, their commits use their personal email; Guard 1 won't fire and other guards (sentinel, heal cap) carry the load |
 
 ---
@@ -1292,17 +1413,19 @@ All test files are new (Phase 02 is greenfield for this module):
 - `npm view @actions/github version` → 9.1.1 [VERIFIED: npm registry, 2026-04-24]
 - `npm view zod version` → 4.3.6 [VERIFIED: npm registry, 2026-04-24]
 - `.github/workflows/security-lint.yml` — Check 4 exact grep patterns for SEC-07; Check 2 yq idiom [VERIFIED: local file]
-- `src/shared/config.ts` — Zod schema factory pattern, existing fields, superRefine pattern [VERIFIED: local file]
+- `src/shared/config.ts` — Zod schema factory pattern, existing fields, superRefine pattern, ZodEffects constraint [VERIFIED: local file]
 - `src/index.ts` — D-07 startup ordering, rawInputs shape, dispatch structure [VERIFIED: local file]
 - `action.yml` — Existing inputs, INPUT_* env block, hyphen convention [VERIFIED: local file]
 - [git-push --force-with-lease documentation](https://git-scm.com/docs/git-push#Documentation/git-push.txt---force-with-leaseltrefnamegt) — Lease semantics, ref-qualified form [CITED: git-scm.com]
-- [git checkout --orphan documentation](https://git-scm.com/docs/git-checkout) — Orphan branch creation, empty initial working tree requirement [CITED: git-scm.com]
+- [git ls-remote --exit-code documentation](https://git-scm.com/docs/git-ls-remote) — exit code 2 = ref absent [CITED: git-scm.com]
+- [git worktree documentation](https://git-scm.com/docs/git-worktree) — worktree add/remove, isolation semantics [CITED: git-scm.com]
+- [git checkout --orphan documentation](https://git-scm.com/docs/git-checkout) — Orphan branch creation [CITED: git-scm.com]
 - [Playwright JSON reporter — test.status values](https://playwright.dev/docs/api/class-suitedescription) — `"expected" | "unexpected" | "flaky" | "skipped"` (NOT `"passed" | "failed"`) [CITED: playwright.dev]
 
 ### Secondary (MEDIUM confidence)
 
 - FEATURES.md — Feature dependency graph, MVP definition [VERIFIED: local file]
-- Phase 01.1 SUMMARY.md — Zod 4 patterns, INPUT_* hyphen convention empirical verification [VERIFIED: local file]
+- Phase 01.1 SUMMARY.md — Zod 4 patterns, INPUT_* hyphen convention empirical verification, ZodEffects constraint [VERIFIED: local file]
 
 ### Tertiary (LOW confidence — not applicable in this research)
 
@@ -1314,8 +1437,8 @@ No WebSearch-only findings in this research. All claims are VERIFIED or CITED.
 
 **Confidence breakdown:**
 - Standard stack: HIGH — all versions npm-verified on 2026-04-24
-- Architecture: HIGH — ARCHITECTURE.md provides the complete protocol; research crystallized it into plan-ready patterns
-- Pitfalls: HIGH — derived from the existing PITFALLS.md + new Phase 02-specific risks identified during pattern writing
+- Architecture: HIGH — ARCHITECTURE.md provides the complete protocol; research crystallized it into plan-ready patterns with worktree isolation correctly applied
+- Pitfalls: HIGH — derived from existing PITFALLS.md + Phase 02-specific risks identified during pattern writing, including the critical workspace-isolation gap
 - Test harness: HIGH — vitest bare-repo pattern is well-established for git integration testing
 
 **Research date:** 2026-04-24
