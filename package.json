@@ -17,10 +17,12 @@
     "@anthropic-ai/claude-agent-sdk": "0.2.119",
     "@playwright/mcp": "0.0.70",
     "tsx": "^4.21.0",
+    "yaml": "^2.8.3",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24",
-    "typescript": "^5.9"
+    "typescript": "^5.9",
+    "vitest": "^4.1.5"
   }
 }
