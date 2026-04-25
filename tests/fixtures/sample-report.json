@@ -1,0 +1,59 @@
+{
+  "config": { "rootDir": "/repo" },
+  "stats": { "startTime": "2026-04-24T10:00:00.000Z", "duration": 1234 },
+  "suites": [
+    {
+      "title": "auth",
+      "file": "tests/auth.spec.ts",
+      "suites": [],
+      "specs": [
+        {
+          "title": "should login",
+          "file": "tests/auth.spec.ts",
+          "tests": [
+            {
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 150,
+                  "retry": 0,
+                  "parallelIndex": 0,
+                  "attachments": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "should logout",
+          "file": "tests/auth.spec.ts",
+          "tests": [
+            {
+              "status": "flaky",
+              "results": [
+                {
+                  "status": "failed",
+                  "duration": 200,
+                  "retry": 0,
+                  "parallelIndex": 0,
+                  "attachments": [],
+                  "error": { "message": "Expected element to be visible" }
+                },
+                {
+                  "status": "passed",
+                  "duration": 180,
+                  "retry": 1,
+                  "parallelIndex": 0,
+                  "attachments": [
+                    { "name": "trace", "path": "test-results/trace-auth-logout.zip", "contentType": "application/zip" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
