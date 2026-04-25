@@ -1,0 +1,32 @@
+{
+  "_comment": "Shard 2 of 3 — shardIndex and shardTotal are set on NdjsonRecord by ingest/index.ts, not in the report JSON",
+  "config": { "rootDir": "/repo" },
+  "stats": { "startTime": "2026-04-24T10:00:00.000Z", "duration": 500 },
+  "suites": [
+    {
+      "title": "checkout",
+      "file": "tests/checkout.spec.ts",
+      "suites": [],
+      "specs": [
+        {
+          "title": "should complete purchase",
+          "file": "tests/checkout.spec.ts",
+          "tests": [
+            {
+              "status": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 300,
+                  "retry": 0,
+                  "parallelIndex": 2,
+                  "attachments": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
