@@ -10,9 +10,11 @@ import type { NdjsonRecord, NdjsonTestEntry } from '../../src/shared/types.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// flakeWindowDays widened to 30 (vs production default of 7) so the synthetic
+// records in this test file — which spread one run per day — all fall in scope.
 const DEFAULT_CONFIG = {
   flakeRateThreshold: 0.2,
-  flakeWindowDays: 7,
+  flakeWindowDays: 30,
   slowRegressionPct: 1.5,
 };
 
@@ -70,7 +72,7 @@ function makeNRecords(
 ): NdjsonRecord[] {
   return Array.from({ length: count }, (_, i) =>
     makeRecord(
-      `run-${testId}-${i}`,
+      `run-${testId}-d${startDaysAgo + i}`,
       [{ testId, outcome, durationMs }],
       startDaysAgo + i,
     ),
@@ -324,12 +326,13 @@ describe('evaluateThresholds — shard deduplication', () => {
 describe('evaluateThresholds — window filtering', () => {
   it('records older than flakeWindowDays are excluded from evaluation', () => {
     const testId = 'tests/window.spec.ts::window test';
-    // 7 records within window (all passed), 5 records outside window (all failed)
+    // Override to 7-day window for this specific test (the rest of the suite uses 30)
+    const sevenDayConfig = { ...DEFAULT_CONFIG, flakeWindowDays: 7 };
     const inside = makeNRecords(testId, 7, 'passed', 100, 0);   // 0-6 days ago
     const outside = makeNRecords(testId, 5, 'failed', 100, 10); // 10-14 days ago (outside 7-day window)
     const records = [...inside, ...outside];
 
-    const detections = evaluateThresholds(records, DEFAULT_CONFIG);
+    const detections = evaluateThresholds(records, sevenDayConfig);
     // Only 7 in-window runs → below 10 minimum → no detection
     expect(detections).toHaveLength(0);
   });
