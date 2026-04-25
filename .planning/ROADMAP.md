@@ -62,9 +62,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Providing an invalid `flake-rate-threshold: "banana"` in `.github/playwright-healer.yml` causes the action to fail with a Zod validation error message naming the invalid field, not a JavaScript crash
   5. A commit made by `playwright-healer-bot` causes the ingest step to exit early with an informational message before doing any state-branch work
 **Plans**: 7 plans
-- [ ] 02-00-PLAN.md — Test infrastructure: vitest setup, bare-repo + fixture helpers, package.json deps (Wave 0)
-- [ ] 02-01-PLAN.md — Config schema extension: CFG-03 threshold fields + yaml loader/merger (CFG-03, CFG-06, CFG-07)
-- [ ] 02-02-PLAN.md — Types + loop guard + report parser: shared types, SEC-05 guards, Playwright JSON parsing (ING-01..04, SEC-05)
+- [x] 02-00-PLAN.md — Test infrastructure: vitest setup, bare-repo + fixture helpers, package.json deps (Wave 0)
+- [x] 02-01-PLAN.md — Config schema extension: CFG-03 threshold fields + yaml loader/merger (CFG-03, CFG-06, CFG-07)
+- [x] 02-02-PLAN.md — Types + loop guard + report parser: shared types, SEC-05 guards, Playwright JSON parsing (ING-01..04, SEC-05)
 - [ ] 02-03-PLAN.md — State branch git protocol: orphan bootstrap, force-with-lease retry, GC, integration tests (STA-01..05)
 - [ ] 02-04-PLAN.md — Threshold evaluator + step summary writer: pure function, log-only DET-04 (DET-01..04)
 - [ ] 02-05-PLAN.md — Ingest pipeline wire-up: src/ingest/index.ts end-to-end orchestration
