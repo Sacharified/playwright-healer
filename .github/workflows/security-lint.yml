@@ -64,11 +64,19 @@ jobs:
             if [ "${COUNT:-0}" -eq 0 ]; then
               continue
             fi
-            # For each such map, check with.persist-credentials == false
+            # For each such map, check with.persist-credentials == false.
+            #
+            # NOTE: cannot use yq's `// "MISSING"` alternative-operator idiom here —
+            # it treats `false` as falsy and would flag correctly-configured
+            # checkouts as missing. Direct `!= false` works because:
+            #   - null     != false  → true  (field absent → flagged)
+            #   - true     != false  → true  (wrong value → flagged)
+            #   - false    != false  → false (correct → not flagged)
+            #   - "false"  != false  → true  (string instead of bool → flagged)
             BAD=$(yq eval -o=json '
               [.. | select(tag == "!!map") | select(has("uses")) |
                select(.uses | test("^actions/checkout(@|$)")) |
-               select((.with."persist-credentials" // "MISSING") != false)] | length
+               select(.with."persist-credentials" != false)] | length
             ' "$f" 2>/dev/null || echo "0")
             if [ "${BAD:-0}" -gt 0 ]; then
               echo "::error file=$f::$BAD actions/checkout step(s) missing 'persist-credentials: false'"
