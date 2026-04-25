@@ -66,7 +66,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 02-01-PLAN.md — Config schema extension: CFG-03 threshold fields + yaml loader/merger (CFG-03, CFG-06, CFG-07)
 - [x] 02-02-PLAN.md — Types + loop guard + report parser: shared types, SEC-05 guards, Playwright JSON parsing (ING-01..04, SEC-05)
 - [x] 02-03-PLAN.md — State branch git protocol: orphan bootstrap, force-with-lease retry, GC, integration tests (STA-01..05)
-- [ ] 02-04-PLAN.md — Threshold evaluator + step summary writer: pure function, log-only DET-04 (DET-01..04)
+- [x] 02-04-PLAN.md — Threshold evaluator + step summary writer: pure function, log-only DET-04 (DET-01..04)
 - [ ] 02-05-PLAN.md — Ingest pipeline wire-up: src/ingest/index.ts end-to-end orchestration
 - [ ] 02-06-PLAN.md — Phase closure: requirements checklist, ROADMAP + CLAUDE.md update
 
