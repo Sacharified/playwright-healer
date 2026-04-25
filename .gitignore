@@ -17,3 +17,8 @@ npm-debug.log*
 # Environment files (no secrets should ever land in repo)
 .env
 .env.local
+
+# playwright-healer test scratch dirs
+tmp-test-repos/
+tmp-state-worktree*/
+coverage/
