@@ -1,11 +1,12 @@
 ---
-status: superseded
+status: superseded_resolved
 phase: 01-security-scaffold-composite-packaging
 source: [01-VERIFICATION.md]
 started: 2026-04-24T17:35:00Z
-updated: 2026-04-25T00:05:00Z
+updated: 2026-04-25T00:30:00Z
 superseded_by: .planning/phases/01.1-multi-provider-input/01.1-HUMAN-UAT.md
 superseded_reason: Phase 01.1 renamed `anthropic-api-key` → `api-key` across action.yml and self-test workflow; the original test scenarios here use stale input names and will not match the current workflow. Run 01.1-HUMAN-UAT.md instead — same 5 runtime concerns + 1 new Ollama empty-key scenario.
+resolved_via: All 5 original concerns were verified equivalently by the 01.1-HUMAN-UAT 2026-04-25 CI run (canary masking, dry-run redaction, invalid-mode fail-fast, empty-api-key fail-fast, npm ci on ubuntu-latest + Node 24). No outstanding Phase 01 verification debt.
 ---
 
 ## Current Test

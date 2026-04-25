@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 01.1-01-PLAN code + docs; 01.1-HUMAN-UAT awaiting CI run
-last_updated: "2026-04-25T00:10:00.000Z"
-last_activity: 2026-04-25 — Phase 01.1 multi-provider input surface committed
+status: ready
+stopped_at: Phase 01 + 01.1 complete; awaiting kickoff for Phase 02 (Ingest + State Branch + Log-Only Detection)
+last_updated: "2026-04-25T00:35:00.000Z"
+last_activity: 2026-04-25 — CI green; Phase 01 + 01.1 complete; 6/6 UAT items passed
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-25)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 01.1 — multi-provider-input (code committed, awaiting CI verification)
+**Current focus:** Phase 02 — ingest-state-branch-detection (next up; not yet started)
 
 ## Current Position
 
-Phase: 01.1 (multi-provider-input) — VERIFYING
-Plan: 1 of 1 (code complete)
-Status: 01.1 code + docs committed; run CI to validate 6 items in 01.1-HUMAN-UAT.md. Phase 01 remains `verifying` with its HUMAN-UAT superseded by 01.1.
-Last activity: 2026-04-25 — Phase 01.1 scaffolded (anthropic-api-key → api-key + provider enum)
+Phase: 02 (ingest-state-branch-detection) — READY (not started)
+Plan: 0 of TBD
+Status: Phase 01 + 01.1 verified end-to-end via 2026-04-25 CI run; ready to discuss/plan Phase 02
+Last activity: 2026-04-25 — Phase 01.1 complete (multi-provider input surface; 6/6 UAT items passed)
 
-Progress: [█████████░] 86% (6/7 plans complete)
+Progress: [██████████] 100% (7/7 Phase 1+1.1 plans complete)
 
 ## Performance Metrics
 
