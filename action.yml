@@ -45,6 +45,56 @@ inputs:
     required: false
     default: ''
 
+  report-path:
+    description: 'Glob or path to Playwright JSON report (ingest mode)'
+    required: false
+    default: 'test-results/results.json'
+
+  flake-rate-threshold:
+    description: 'Flake rate (0.0–1.0) above which a test is a flake candidate. Default: 0.2 (20%)'
+    required: false
+    default: '0.2'
+
+  flake-window-days:
+    description: 'Rolling window in days for flake-rate and slow-regression computation. Default: 7'
+    required: false
+    default: '7'
+
+  slow-regression-pct:
+    description: 'p95 duration growth ratio that triggers slow-regression detection. Default: 1.5 (50% slower)'
+    required: false
+    default: '1.5'
+
+  rerun-count:
+    description: 'Number of validation re-runs after a fix (Phase 3+). Default: 10'
+    required: false
+    default: '10'
+
+  rerun-pass-rate:
+    description: 'Required pass rate (0.0–1.0) for a fix to be accepted (Phase 3+). Default: 0.9'
+    required: false
+    default: '0.9'
+
+  max-budget-usd:
+    description: 'Max USD per healing run (Phase 3+). Default: 2.00'
+    required: false
+    default: '2.00'
+
+  max-turns:
+    description: 'Max agent turns per healing run (Phase 3+). Default: 30'
+    required: false
+    default: '30'
+
+  retention-days:
+    description: 'Days to retain state branch records before GC. Default: 90. Set to 0 to disable GC.'
+    required: false
+    default: '90'
+
+  max-heals-per-test-per-week:
+    description: 'Per-test heal attempt cap per 7-day window (circuit breaker). Default: 3'
+    required: false
+    default: '3'
+
 runs:
   using: composite
   steps:
@@ -73,4 +123,14 @@ runs:
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_API-ENDPOINT: ${{ inputs.api-endpoint }}
+        INPUT_REPORT-PATH: ${{ inputs.report-path }}
+        INPUT_FLAKE-RATE-THRESHOLD: ${{ inputs.flake-rate-threshold }}
+        INPUT_FLAKE-WINDOW-DAYS: ${{ inputs.flake-window-days }}
+        INPUT_SLOW-REGRESSION-PCT: ${{ inputs.slow-regression-pct }}
+        INPUT_RERUN-COUNT: ${{ inputs.rerun-count }}
+        INPUT_RERUN-PASS-RATE: ${{ inputs.rerun-pass-rate }}
+        INPUT_MAX-BUDGET-USD: ${{ inputs.max-budget-usd }}
+        INPUT_MAX-TURNS: ${{ inputs.max-turns }}
+        INPUT_RETENTION-DAYS: ${{ inputs.retention-days }}
+        INPUT_MAX-HEALS-PER-TEST-PER-WEEK: ${{ inputs.max-heals-per-test-per-week }}
       run: npx tsx src/index.ts
