@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "echo 'no tests in Phase 1 (see .github/workflows/phase1-self-test.yml)'"
+    "test": "vitest run"
   },
   "dependencies": {
     "@actions/core": "3.0.1",
@@ -21,6 +21,8 @@
   },
   "devDependencies": {
     "@types/node": "^24",
-    "typescript": "^5.9"
+    "@vitest/coverage-v8": "^4.1.5",
+    "typescript": "^5.9",
+    "vitest": "^4.1.5"
   }
 }
