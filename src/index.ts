@@ -9,17 +9,29 @@
 //      invariant with zero branching)
 //   2. setSecret() each one — registers with runner mask BEFORE any log line
 //   3. getInput() the non-secret inputs (mode, provider, model, api-endpoint, …)
-//   4. Zod validation (fail-fast with field-naming error on invalid input;
+//   4. Load + merge YAML overrides (CFG-06/CFG-07) BEFORE Zod sees rawInputs
+//      so SC#4 (banana threshold in YAML) surfaces as a Zod field error
+//   5. Zod validation (fail-fast with field-naming error on invalid input;
 //      per-provider api-key requirement enforced via superRefine)
-//   5. switch-dispatch on mode: dry-run is self-contained; ingest/heal dynamically
-//      import their stub modules (throw in Phase 1 per D-09)
+//   6. switch-dispatch on mode: dry-run is self-contained; ingest/heal dynamically
+//      import their stub modules
 //
 // IMPORTANT: do NOT log anything — core.info, console.log, throw-with-input-values —
 // before step 2 completes. Any log line before setSecret leaks the value into the
 // Actions log.
 
 import * as core from '@actions/core';
-import { getInputSchema, DEFAULT_MODELS, type Config } from './shared/config.js';
+import {
+  getInputSchema,
+  DEFAULT_MODELS,
+  loadYamlConfig,
+  mergeConfigs,
+  type Config,
+} from './shared/config.js';
+
+function camelize(kebab: string): string {
+  return kebab.replace(/-(.)/g, (_, c: string) => c.toUpperCase());
+}
 
 async function main(): Promise<void> {
   // ── Phase A: SECRET MASKING (D-07 — must be first, before any log line) ──
@@ -32,7 +44,7 @@ async function main(): Promise<void> {
   core.setSecret(githubToken);
 
   // ── Phase B: INPUT COLLECTION ──
-  const rawInputs = {
+  const actionInputs: Record<string, string> = {
     mode:           core.getInput('mode',           { required: true }),
     setupCommand:   core.getInput('setup-command'),
     startCommand:   core.getInput('start-command'),
@@ -44,7 +56,29 @@ async function main(): Promise<void> {
     provider:       core.getInput('provider'),
     model:          core.getInput('model'),
     apiEndpoint:    core.getInput('api-endpoint'),
+    // ── CFG-03: Phase 02 threshold inputs ─────────────────────────────────
+    reportPath:              core.getInput('report-path'),
+    flakeRateThreshold:      core.getInput('flake-rate-threshold'),
+    flakeWindowDays:         core.getInput('flake-window-days'),
+    slowRegressionPct:       core.getInput('slow-regression-pct'),
+    rerunCount:              core.getInput('rerun-count'),
+    rerunPassRate:           core.getInput('rerun-pass-rate'),
+    maxBudgetUsd:            core.getInput('max-budget-usd'),
+    maxTurns:                core.getInput('max-turns'),
+    retentionDays:           core.getInput('retention-days'),
+    maxHealsPerTestPerWeek:  core.getInput('max-heals-per-test-per-week'),
   };
+
+  // ── Phase B': YAML MERGE (CFG-06/CFG-07; load-bearing for SC#4) ─────────
+  // YAML keys are kebab-case (`flake-rate-threshold`), but the schema expects
+  // camelCase. Translate yaml keys before merging so an invalid yaml value
+  // reaches Zod under the correct field path and errors with a named field.
+  const workspacePath = process.env.GITHUB_WORKSPACE ?? process.cwd();
+  const yamlRaw = loadYamlConfig(workspacePath);
+  const yamlAsCamel: Record<string, unknown> = Object.fromEntries(
+    Object.entries(yamlRaw).map(([k, v]) => [camelize(k), v]),
+  );
+  const rawInputs = mergeConfigs(actionInputs, yamlAsCamel);
 
   // ── Phase C: VALIDATION (Zod; fail-fast; field-naming error per SC#4) ──
   const parsed = getInputSchema().safeParse(rawInputs);
@@ -64,7 +98,7 @@ async function main(): Promise<void> {
       return;
     case 'ingest': {
       const m = await import('./ingest/index.js');
-      await m.run(config); // throws in Phase 1 per D-09
+      await m.run(config);
       return;
     }
     case 'heal': {
