@@ -12,6 +12,13 @@ A reusable GitHub Action that auto-heals flaky, failing, or slow Playwright test
 - **`.planning/research/STACK.md`** — Current versions of `@anthropic-ai/claude-agent-sdk`, `@playwright/mcp`, `@actions/*`, Octokit, Zod.
 - **`.planning/research/PITFALLS.md`** — 10 HIGH-severity pitfalls. Four are architecturally binding (Phase 1).
 - **`.planning/config.json`** — GSD workflow config (mode: yolo, granularity: standard, parallelization: true).
+- **`src/shared/types.ts`** — `NdjsonRecord`, `NdjsonTestEntry`, `Detection` type definitions (Phase 02).
+- **`src/shared/state-branch.ts`** — All git ops on `playwright-healer-state` branch via an isolated `/tmp` worktree; `--force-with-lease` retry loop, append-only NDJSON, retention GC (Phase 02).
+- **`src/shared/loop-guard.ts`** — `shouldSkipIngest()` SEC-05 fork-PR / bot-author / `[skip-healer]` sentinel checks (Phase 02).
+- **`src/ingest/report-parser.ts`** — Playwright JSON → `NdjsonTestEntry[]` with Zod graceful degrade (ING-01..04) (Phase 02).
+- **`src/ingest/threshold-evaluator.ts`** — Pure function: `NdjsonRecord[]` → `Detection[]`; rolling-window flake-rate + p95 slow-regression (DET-01..03) (Phase 02).
+- **`src/ingest/summary-writer.ts`** — Markdown table → `core.summary`; per-detection `::warning::` annotation; log-only (DET-04) (Phase 02).
+- **`.planning/phases/02-ingest-state-branch-detection/02-RESEARCH.md`** — 14 plan-ready patterns for Phase 02 implementation (state branch concurrency, shard dedup, GC, etc.).
 
 ## Key architectural facts
 

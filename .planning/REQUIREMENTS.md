@@ -25,34 +25,34 @@
 **: `action.yml` exposes inputs for all user-provided commands: `setup-command`, `start-command`, `test-command`, `base-url`
 - [x] **CFG-02
 **: `action.yml` exposes secret inputs: `api-key` (inference-provider API key; required unless `provider=ollama` — per-provider enforcement via Zod `superRefine`, added in Phase 01.1 — formerly `anthropic-api-key`), `healer-token` (PAT or App token, required for PR creation and `workflow_dispatch`), `github-token` (defaults to built-in)
-- [ ] **CFG-03**: `action.yml` exposes tunable thresholds: `flake-rate-threshold` (default 0.2 = 20%), `flake-window-days` (default 7), `slow-regression-pct` (default 1.5 = 50% slower), `rerun-count` (default 10), `rerun-pass-rate` (default 0.9 = 9/10), `max-budget-usd` (default 2.00), `max-turns` (default 30)
+- [x] **CFG-03**: `action.yml` exposes tunable thresholds: `flake-rate-threshold` (default 0.2 = 20%), `flake-window-days` (default 7), `slow-regression-pct` (default 1.5 = 50% slower), `rerun-count` (default 10), `rerun-pass-rate` (default 0.9 = 9/10), `max-budget-usd` (default 2.00), `max-turns` (default 30)
 - [ ] **CFG-04**: `action.yml` exposes per-fix-class toggles: `enable-selector-fixes`, `enable-wait-fixes`, `enable-assertion-fixes`, `enable-slow-fixes` (all default true)
 - [x] **CFG-05
 **: `action.yml` exposes a mode input: `mode` = `ingest` | `heal` | `dry-run` — each step in a consumer workflow specifies which phase it runs
-- [ ] **CFG-06**: An optional `.github/playwright-healer.yml` config file in the consuming repo overrides action.yml inputs; the action merges both with action.yml winning
-- [ ] **CFG-07**: All merged config is validated with Zod; invalid config fails the action with a clear error, not a crash
+- [x] **CFG-06**: An optional `.github/playwright-healer.yml` config file in the consuming repo overrides action.yml inputs; the action merges both with action.yml winning
+- [x] **CFG-07**: All merged config is validated with Zod; invalid config fails the action with a clear error, not a crash
 
 ### Report Ingestion (ING)
 
-- [ ] **ING-01**: The `ingest` mode locates a Playwright JSON report by pattern (`report-path` input, default `test-results/results.json`) and parses it into typed records
-- [ ] **ING-02**: The parser extracts per-test: file path, test title, outcome (passed/failed/flaky/timed-out), duration, retries, error messages, trace attachment path
-- [ ] **ING-03**: The parser validates the report against a runtime Zod schema; an unrecognized shape produces a diagnostic warning (not a crash) and the run is still recorded as "report-unreadable"
-- [ ] **ING-04**: The parser is shard-aware — if the report reflects a single shard of a sharded run, the record is marked with shard metadata so detection can deduplicate across shards
+- [x] **ING-01**: The `ingest` mode locates a Playwright JSON report by pattern (`report-path` input, default `test-results/results.json`) and parses it into typed records
+- [x] **ING-02**: The parser extracts per-test: file path, test title, outcome (passed/failed/flaky/timed-out), duration, retries, error messages, trace attachment path
+- [x] **ING-03**: The parser validates the report against a runtime Zod schema; an unrecognized shape produces a diagnostic warning (not a crash) and the run is still recorded as "report-unreadable"
+- [x] **ING-04**: The parser is shard-aware — if the report reflects a single shard of a sharded run, the record is marked with shard metadata so detection can deduplicate across shards
 
 ### State Branch (STA)
 
-- [ ] **STA-01**: On first use in a consuming repo, the action creates an orphan `playwright-healer-state` branch if it does not exist; subsequent runs clone this branch only
-- [ ] **STA-02**: The action appends new stats records as NDJSON (one JSON object per line) to a path like `runs/YYYY/MM/DD.ndjson` — append-only, no in-place updates
-- [ ] **STA-03**: Pushes to the state branch use `--force-with-lease` and a retry loop on conflict (rebase onto latest remote, re-apply, retry up to N times)
-- [ ] **STA-04**: Concurrent ingest steps from overlapping CI runs never lose records — verified by a concurrent-write integration test
-- [ ] **STA-05**: The action runs periodic GC on the state branch: records older than `retention-days` (default 90) are dropped in a rewrite commit
+- [x] **STA-01**: On first use in a consuming repo, the action creates an orphan `playwright-healer-state` branch if it does not exist; subsequent runs clone this branch only
+- [x] **STA-02**: The action appends new stats records as NDJSON (one JSON object per line) to a path like `runs/YYYY/MM/DD.ndjson` — append-only, no in-place updates
+- [x] **STA-03**: Pushes to the state branch use `--force-with-lease` and a retry loop on conflict (rebase onto latest remote, re-apply, retry up to N times)
+- [x] **STA-04**: Concurrent ingest steps from overlapping CI runs never lose records — verified by a concurrent-write integration test
+- [x] **STA-05**: The action runs periodic GC on the state branch: records older than `retention-days` (default 90) are dropped in a rewrite commit
 
 ### Detection & Dispatch (DET)
 
-- [ ] **DET-01**: A threshold evaluator runs at the end of `ingest` mode and computes per-test rolling metrics: flake rate over `flake-window-days`, p50/p95 duration, duration regression vs baseline
-- [ ] **DET-02**: A test is a flake candidate when: `flake_rate >= flake-rate-threshold` AND `run_count >= 10` (need enough data) AND no existing open healer PR for this test
-- [ ] **DET-03**: A test is a slow candidate when: `p95_duration_pct_increase >= slow-regression-pct` over the rolling window AND has not been recently healed
-- [ ] **DET-04**: In `log-only` dispatch mode (default for v0 rollout), detections are written to the action's step summary but no dispatch fires — lets consumers validate thresholds before enabling healing
+- [x] **DET-01**: A threshold evaluator runs at the end of `ingest` mode and computes per-test rolling metrics: flake rate over `flake-window-days`, p50/p95 duration, duration regression vs baseline
+- [x] **DET-02**: A test is a flake candidate when: `flake_rate >= flake-rate-threshold` AND `run_count >= 10` (need enough data) AND no existing open healer PR for this test
+- [x] **DET-03**: A test is a slow candidate when: `p95_duration_pct_increase >= slow-regression-pct` over the rolling window AND has not been recently healed
+- [x] **DET-04**: In `log-only` dispatch mode (default for v0 rollout), detections are written to the action's step summary but no dispatch fires — lets consumers validate thresholds before enabling healing
 - [ ] **DET-05**: In live dispatch mode, when a test crosses threshold, the action fires `workflow_dispatch` on a configurable healer-workflow file (default `.github/workflows/playwright-healer.yml`) with a self-contained JSON payload: commit SHA, test file, test title, fix-class hint, recent run stats
 - [ ] **DET-06**: Dispatch uses the `healer-token` PAT (not `GITHUB_TOKEN`) so the eventual healer PR's CI will actually run
 - [ ] **DET-07**: A concurrency group keyed on test file + test title prevents two simultaneous dispatches for the same test
@@ -65,7 +65,7 @@
 **: Neither the ingest nor heal workflows define a `pull_request_target` trigger, ever — enforced by a CI lint in this repo's own workflows
 - [ ] **SEC-03**: The Playwright MCP is launched with `--allowed-origins` constraining navigation to `base-url` + `http://localhost:*`
 - [ ] **SEC-04**: The Claude Agent SDK is configured with an explicit `allowedTools` list: `["mcp__playwright__*", "Read", "Grep", "Glob"]`. `Bash`, `Write`, `Edit`, and other tools are not in that list; fix application happens outside the agent loop
-- [ ] **SEC-05**: Before dispatching a heal, loop-guard checks: (a) the triggering commit's author is not `playwright-healer-bot`, (b) the triggering commit message does not contain `[skip-healer]`, (c) the per-test heal count in the state branch is below `max-heals-per-test-per-week` (default 3)
+- [x] **SEC-05**: Before dispatching a heal, loop-guard checks: (a) the triggering commit's author is not `playwright-healer-bot`, (b) the triggering commit message does not contain `[skip-healer]`, (c) the per-test heal count in the state branch is below `max-heals-per-test-per-week` (default 3)
 - [x] **SEC-06
 **: The action never logs the values of `api-key` (renamed from `anthropic-api-key` in 01.1), `healer-token`, or `github-token`; `@actions/core.setSecret` is called on each at startup. `setSecret('')` is a no-op, so the Ollama empty-api-key path preserves the branchless D-07 ordering.
 - [x] **SEC-07
@@ -184,24 +184,24 @@ Explicitly excluded. Documented so they don't creep back in.
 | PKG-05 | Phase 6 | Pending |
 | CFG-01 | Phase 1 | Pending |
 | CFG-02 | Phase 1 | Pending |
-| CFG-03 | Phase 2 | Pending |
+| CFG-03 | Phase 2 | Complete |
 | CFG-04 | Phase 3 | Pending |
 | CFG-05 | Phase 1 | Pending |
-| CFG-06 | Phase 2 | Pending |
-| CFG-07 | Phase 2 | Pending |
-| ING-01 | Phase 2 | Pending |
-| ING-02 | Phase 2 | Pending |
-| ING-03 | Phase 2 | Pending |
-| ING-04 | Phase 2 | Pending |
-| STA-01 | Phase 2 | Pending |
-| STA-02 | Phase 2 | Pending |
-| STA-03 | Phase 2 | Pending |
-| STA-04 | Phase 2 | Pending |
-| STA-05 | Phase 2 | Pending |
-| DET-01 | Phase 2 | Pending |
-| DET-02 | Phase 2 | Pending |
-| DET-03 | Phase 2 | Pending |
-| DET-04 | Phase 2 | Pending |
+| CFG-06 | Phase 2 | Complete |
+| CFG-07 | Phase 2 | Complete |
+| ING-01 | Phase 2 | Complete |
+| ING-02 | Phase 2 | Complete |
+| ING-03 | Phase 2 | Complete |
+| ING-04 | Phase 2 | Complete |
+| STA-01 | Phase 2 | Complete |
+| STA-02 | Phase 2 | Complete |
+| STA-03 | Phase 2 | Complete |
+| STA-04 | Phase 2 | Complete |
+| STA-05 | Phase 2 | Complete |
+| DET-01 | Phase 2 | Complete |
+| DET-02 | Phase 2 | Complete |
+| DET-03 | Phase 2 | Complete |
+| DET-04 | Phase 2 | Complete |
 | DET-05 | Phase 4 | Pending |
 | DET-06 | Phase 4 | Pending |
 | DET-07 | Phase 4 | Pending |
@@ -209,7 +209,7 @@ Explicitly excluded. Documented so they don't creep back in.
 | SEC-02 | Phase 1 | Pending |
 | SEC-03 | Phase 3 | Pending |
 | SEC-04 | Phase 3 | Pending |
-| SEC-05 | Phase 2 | Pending |
+| SEC-05 | Phase 2 | Complete |
 | SEC-06 | Phase 1 | Pending |
 | SEC-07 | Phase 1 | Pending |
 | HEA-01 | Phase 3 | Pending |

@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Security Scaffold + Composite Packaging** (complete 2026-04-25) - Establish the composite action structure with all four architecturally-binding security controls in place before any agent code is written. UAT items resolved equivalently by Phase 1.1 CI run.
 - [x] **Phase 1.1: Multi-Provider Input Surface** (INSERTED, complete 2026-04-25) - Generalize the Anthropic-specific input surface to support Anthropic, Gemini, and Ollama via a `provider` input; drop `required: true` on `api-key` with per-provider Zod `superRefine` enforcement; adapters land in Phase 3
-- [ ] **Phase 2: Ingest + State Branch + Log-Only Detection** - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
+- [x] **Phase 2: Ingest + State Branch + Log-Only Detection** (complete 2026-04-25) - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
 - [ ] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** - Wire the full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback for all failure modes
 - [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
 - [ ] **Phase 5: Auto-Merge** - Add opt-in auto-merge for high-confidence fixes that pass all trust-chain gates
@@ -68,7 +68,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 02-03-PLAN.md — State branch git protocol: orphan bootstrap, force-with-lease retry, GC, integration tests (STA-01..05)
 - [x] 02-04-PLAN.md — Threshold evaluator + step summary writer: pure function, log-only DET-04 (DET-01..04)
 - [x] 02-05-PLAN.md — Ingest pipeline wire-up: src/ingest/index.ts end-to-end orchestration
-- [ ] 02-06-PLAN.md — Phase closure: requirements checklist, ROADMAP + CLAUDE.md update
+- [x] 02-06-PLAN.md — Phase closure: requirements checklist, ROADMAP + CLAUDE.md update
 
 ### Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)
 **Goal**: A maintainer can manually trigger the healer workflow with a fixture dispatch payload targeting a known-broken selector or timing issue; the action reproduces the failure, proposes a fix, validates it with N reruns using `retries: 0`, opens a PR using the PAT token so CI actually fires, and routes all failure paths (startup timeout, deterministic failure, diff-lint block, no fix proposable) to structured GitHub issues
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Security Scaffold + Composite Packaging | 6/6 | Complete | 2026-04-25 |
 | 1.1 Multi-Provider Input Surface | 1/1 | Complete | 2026-04-25 |
-| 2. Ingest + State Branch + Log-Only Detection | 0/7 | Planned | - |
+| 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 0/TBD | Not started | - |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
