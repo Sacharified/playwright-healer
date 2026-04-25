@@ -64,7 +64,7 @@ updated: 2026-04-25
 
 - [ ] `vitest@4.1.5` and `@vitest/coverage-v8@4.1.5` added to `devDependencies` in `package.json`
 - [ ] `yaml@2.8.3` added to `dependencies` in `package.json`
-- [ ] `@actions/glob@0.7.0` added to `devDependencies` in `package.json`
+- [ ] `@actions/glob@0.7.0` added to `dependencies` (RUNTIME — imported by src/ingest/index.ts; composite action's `npm ci --production` excludes devDependencies)
 - [ ] `vitest.config.ts` at repo root — two projects: `unit` (threads pool, `tests/unit/**/*.test.ts`) and `integration` (forks pool, `tests/integration/**/*.test.ts`); `testTimeout: 15000`
 - [ ] `tests/_helpers/bare-repo.ts` — `makeBareRepo()` creates bare remote + two primary workspace clones; `BareRepoContext` interface with `cleanup()`
 - [ ] `tests/_helpers/fixture-report.ts` — `makeFixtureReport(specs)` fabricates Playwright JSON reports; `makeTestEntry(override)` convenience wrapper
