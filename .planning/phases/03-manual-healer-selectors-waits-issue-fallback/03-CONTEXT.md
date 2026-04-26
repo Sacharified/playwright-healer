@@ -51,11 +51,12 @@ A maintainer can manually trigger the healer workflow via `workflow_dispatch` wi
   }
   ```
   Each provider has its own implementation file under `src/healer/adapters/` (e.g., `gemini.ts`, `anthropic.ts`, `ollama.ts`). The healer's downstream pipeline (fix-applier, validator, pr-writer) is provider-agnostic and consumes the typed return value only.
-- **D-03:** **Tool-name translation lives inside each adapter**, not in shared code. The adapter receives `ALLOWED_TOOLS` (canonical `mcp__server__tool` form from `src/shared/security-contract.ts`) and translates per provider:
-  - `gemini` → `mcp_server_tool` (single underscore, sanitized — per `@google/genai` experimental MCP convention)
-  - `anthropic` → identity (canonical form is Anthropic's form)
-  - `ollama` → native JSON-schema function names via an MCP↔function-calling bridge (Phase 3+1)
-  Inline string literals of these tool names remain banned outside `security-contract.ts` per Phase 1 D-13.
+- **D-03:** **Tool-surface scoping lives inside each adapter**, not in shared code. The adapter receives `ALLOWED_TOOLS` (canonical `mcp__server__tool` form from `src/shared/security-contract.ts`) and the meaning is provider-specific:
+  - `anthropic` → forwarded as the SDK's `allowedTools` parameter (identity transformation; canonical form is Anthropic's form).
+  - `gemini` → used as an **audit invariant**. The adapter spawns the Playwright MCP `Client`, calls `client.listTools()`, and verifies every discovered tool name maps to a glob in `ALLOWED_TOOLS` (e.g., `browser_navigate` matches `mcp__playwright__*` after stripping the `mcp__playwright__` prefix). If any tool is uncovered, fail fast. The `Client` is then passed to `mcpToTool(client)`. No MCP servers other than Playwright are registered, so the agent is limited to browser tools by construction. **Note:** `@google/genai@1.50.1` passes MCP tool names verbatim (no canonical→single-underscore translation happens at the SDK layer — verified against installed source); Playwright MCP exposes `browser_navigate`, `browser_click`, etc., directly. There is no name *transformation* on Gemini; `ALLOWED_TOOLS` remains the single source of truth via the audit-invariant check.
+  - `ollama` → deferred (Phase 3+1). Will use the same audit-invariant approach over the function-calling bridge.
+
+  Inline string literals of MCP tool names (e.g., `'browser_navigate'`, `'mcp_playwright_browser_navigate'`) remain banned outside `security-contract.ts` per Phase 1 D-13. **Updated 2026-04-27** based on `gsd-phase-researcher` verification of `@google/genai` SDK source — supersedes the original "translate canonical to single-underscore form" wording.
 - **D-04:** **`FixProposal` type** is the documented contract per FIX-04: `{ rootCause: string; fixClass: 'selectors' | 'waits'; diff: string; rationale: string }`. `NoFixProposable` is `{ reason: string; evidence: string }` and routes to issue-fallback per FIX-08.
 
 ### Agent System Prompt Architecture (Area 2)
