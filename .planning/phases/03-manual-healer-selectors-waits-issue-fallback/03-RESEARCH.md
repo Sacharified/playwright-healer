@@ -1117,6 +1117,11 @@ A fixture repo with two known bugs (`#wrong-id` selector + `waitForTimeout(1)` t
    - What's unclear: Does the PRI-05 sanity rerun consume the same N budget, or is it cheaper (e.g., 3 reruns)?
    - Recommendation: Use `min(3, rerun-count)` for the sanity check to keep the PRI-05 path fast. Document this as a P3 implementation choice; revisit if false positives bite.
 
+5. **What happens if `setup-command` fails (D-14 step 3)?**
+   - What we know: D-09 lists six failure-mode tokens, all of which assume the heal step has started. A `setup-command` non-zero exit kills the composite run before the heal step (Step 5) executes.
+   - What's unclear: Whether to (a) accept that pre-heal-pass failures surface only via the GitHub Actions UI (no issue filed), or (b) add a seventh failure mode like `setup-command-failed` and have the composite step file an issue inline before exiting.
+   - Recommendation: Defer to planner. Option (a) keeps the six-mode list locked for Phase 4 PRI-04 dedup; option (b) makes "always-issue" (D-09) literally true. If picking (b), the issue would need to be filed by a small bash-step that calls `gh issue create` directly (no TS process available), which adds one more shell helper.
+
 ---
 
 ## Project Constraints (from CLAUDE.md)
@@ -1178,11 +1183,15 @@ The following directives MUST be honored by every Phase 3 plan:
 | Validation | HIGH | Per-REQ test mapping with mock strategy |
 | Pricing assumptions | MEDIUM | Logged as A1/A2 |
 
-### Decision Conflicts Surfaced (planner / discuss-phase to resolve)
-1. **D-03 / SEC-04 — Gemini tool-name "translation" is conceptually wrong.** Proposed rewrite included in Decision Conflict section.
-2. **D-21 / SEC-03 — `--allowed-origins` is not a security boundary** per Playwright MCP README. Treat as defense-in-depth; layer the actual mitigation.
-3. **FIX-02 — "PreToolUse hook" is Anthropic-specific.** Treat the property requirement (pre-call budget abort) as provider-agnostic; Gemini uses the manual-loop pattern documented above.
-4. **A3 (subtle) — `--allowed-origins` separator is `;` not `,`** per the README. CONTEXT.md D-21 example is wrong.
+### Decision Conflicts Surfaced
+
+**Blocking — route back to discuss-phase before plan-check:**
+1. **D-03 / SEC-04 — Gemini tool-name "translation" is conceptually wrong.** This changes the adapter-contract semantics. Proposed rewrite is included verbatim in the Decision Conflict section above; the user owns whether to adopt it as written.
+
+**Non-blocking — planner inherits the documented resolution; flag in plan-check if user disagrees:**
+2. **D-21 / SEC-03 — `--allowed-origins` is not a security boundary.** Defense-in-depth reframe only; no implementation change. Planner uses the layered mitigation language documented above.
+3. **FIX-02 — "PreToolUse hook" is Anthropic-specific.** The adapter-contract abstracts both mechanisms; FIX-02's intent (pre-call budget abort) is preserved by the Gemini manual-loop pattern.
+4. **A3 — `--allowed-origins` separator is `;` not `,`.** README is authoritative; planner uses semicolons in implementation; CONTEXT.md D-21's comma-form example is a typo to be ignored.
 
 ### Ready for Planning
-Research complete. Planner should resolve the four decision conflicts (with user) before drafting plan tasks for the Gemini adapter and the action.yml step changes. Everything else is well-determined.
+Research complete. Planner should route Conflict #1 to discuss-phase for user resolution before drafting Gemini adapter tasks. Conflicts #2, #3, and A3 have documented resolutions the planner can adopt directly. Everything else is well-determined.
