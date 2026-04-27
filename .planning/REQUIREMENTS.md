@@ -125,7 +125,7 @@
 
 ### Test Hygiene (TEST)
 
-- [ ] **TEST-01
+- [x] **TEST-01
 **: `phase1-self-test.yml` runs end-to-end green on a fresh `ubuntu-latest` runner with no pre-existing test-design bugs — every scenario's assertion mechanism matches GitHub Actions' actual semantics (e.g., no reliance on per-step `$GITHUB_STEP_SUMMARY` for cross-step assertions; canary-mask tests pre-register the canary with the runner masker before the step header is emitted)
 
 ---
@@ -251,7 +251,7 @@ Explicitly excluded. Documented so they don't creep back in.
 | DOC-03 | Phase 6 | Pending |
 | DOC-04 | Phase 6 | Pending |
 | DOC-05 | Phase 6 | Pending |
-| TEST-01 | Phase 01.3 | Pending |
+| TEST-01 | Phase 01.3 | Complete |
 
 **Coverage:**
 - v1 requirements: **70** total (across 13 categories)

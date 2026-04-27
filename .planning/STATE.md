@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed 01.3-01-PLAN.md (partial — verify-log-mask Job B failed; SC#1 complete, SC#2 blocked)"
-last_updated: "2026-04-27T22:04:31.371Z"
+stopped_at: Completed 01.3-01-PLAN.md (all 7 jobs green after Option C plan-correction; TEST-01 satisfied)
+last_updated: "2026-04-27T22:14:02.709Z"
 last_activity: 2026-04-27
 progress:
   total_phases: 9
@@ -93,6 +93,8 @@ Recent decisions affecting current work:
 - Regression-test job self-test-hyphenated-input-env added to phase1-self-test.yml as isolated Scenario 6 — does not invoke 'uses: ./' to avoid Zod superRefine noise; failure points directly at the spawn line
 - SC#2 option (a) design bug discovered: echo ::add-mask::CANARY in run: block leaks literal in runner command-echo before masking takes effect; verify-log-mask Job B fails; user decision required on fix approach
 - SC#1 fixed: composite-action output bridge (core.setOutput dryRunSummary + action.yml outputs.dry-run-summary) works end-to-end; Scenarios 4+5 green on ubuntu-latest
+- SC#2 recovered via Option C: filter ::add-mask:: lines from verify-log-mask grep; preserves Phase 01-06 TWO-JOB pattern; live CI run 25022284855 all 7 jobs green
+- Phase 01.3 complete: TEST-01 satisfied; phase1-self-test.yml end-to-end green on fresh ubuntu-latest with no repo secrets (SC#3 invariant established)
 
 ### Pending Todos
 
@@ -103,8 +105,7 @@ None yet.
 - **Phase 1 gate:** Native SDK binary discovery (`npm ci --production` installing `@anthropic-ai/claude-agent-sdk-linux-x64` on ubuntu-latest) is unverified — must smoke-test before agent code is written
 - **Phase 3 gate:** Agent system prompt structure for four-stage CI remediation loop has no established template — budget iteration time
 - **Phase 03 SC-1/SC-3 env-var blocker — RESOLVED 2026-04-27:** Live ubuntu-latest run confirmed `./node_modules/.bin/tsx` preserves hyphenated INPUT_*. Scenario 6 green; Scenario 1 Job A green; Scenario 4 dispatcher writes summary correctly (visible in UI). 03-HUMAN-UAT.md G-01 marked resolved.
-- **Phase 01.3 needed before clean phase1-self-test.yml signal:** Three pre-existing test-design bugs were unmasked by 01.2's fix (action now runs end-to-end so latent assertion bugs surface). They do NOT block Phase 03 re-attempt — they affect masking-assertion correctness in Scenario 1 Job B and dry-run summary assertions in Scenarios 4+5, in Phase 03's path. See `.planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md` "Scope clarification" section for details.
-- Phase 01.3 SC#2: verify-log-mask Job B fails because echo ::add-mask::LITERAL in run: block exposes literal in runner command-echo log before masking takes effect. User must choose fix option (A/B/C/D) from 01.3-01-SUMMARY.md Failure Diagnosis. Run: https://github.com/Sacharified/playwright-healer/actions/runs/25021785350
+- **Phase 01.3 RESOLVED 2026-04-27:** All three pre-existing test-design bugs fixed. SC#1 (composite-action output bridge for Scenarios 4+5), SC#2 (Option C filter on verify-log-mask grep — preserves TWO-JOB pattern), SC#3 (regression job + scenarios 2/3/6), SC#4 (single production-code line) all GREEN on run 25022284855. TEST-01 marked Complete in REQUIREMENTS.md.
 
 ### Roadmap Evolution
 
@@ -122,8 +123,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-27T22:04:26.085Z
-Stopped at: Completed 01.3-01-PLAN.md (partial — verify-log-mask Job B failed; SC#1 complete, SC#2 blocked)
+Last session: 2026-04-27T22:14:02.706Z
+Stopped at: Completed 01.3-01-PLAN.md (all 7 jobs green after Option C plan-correction; TEST-01 satisfied)
 Resume file: None
 
 **Planned Phase:** 01.3 (Fix pre-existing phase1-self-test.yml test-design bugs (INSERTED)) — 1 plans — 2026-04-27T20:56:51.405Z
