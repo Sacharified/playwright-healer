@@ -1,0 +1,10 @@
+diff --git a/tests/checkout.spec.ts b/tests/checkout.spec.ts
+index abc123..def456 100644
+--- a/tests/checkout.spec.ts
++++ b/tests/checkout.spec.ts
+@@ -10,7 +10,7 @@ test('completes purchase flow', async ({ page }) => {
+   await page.goto('/');
+-  await page.locator('#wrong-id').click();
++  await page.getByRole('button', { name: 'Buy now' }).click();
+   await expect(page).toHaveURL(/\/checkout/);
+ });

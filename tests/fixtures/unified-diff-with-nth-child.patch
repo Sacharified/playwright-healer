@@ -1,0 +1,8 @@
+diff --git a/tests/checkout.spec.ts b/tests/checkout.spec.ts
+--- a/tests/checkout.spec.ts
++++ b/tests/checkout.spec.ts
+@@ -10,6 +10,7 @@
+   await page.goto('/');
+-  await page.locator('button.buy').click();
++  await page.locator('ul li:nth-child(3)').click();
+ });

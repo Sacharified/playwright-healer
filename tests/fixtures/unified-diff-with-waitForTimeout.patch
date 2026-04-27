@@ -1,0 +1,8 @@
+diff --git a/tests/checkout.spec.ts b/tests/checkout.spec.ts
+--- a/tests/checkout.spec.ts
++++ b/tests/checkout.spec.ts
+@@ -10,6 +10,7 @@ test('completes purchase flow', async ({ page }) => {
+   await page.goto('/');
++  await page.waitForTimeout(3000);
+   await page.getByRole('button').click();
+ });
