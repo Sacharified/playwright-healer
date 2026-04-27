@@ -1,0 +1,269 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Config } from '../shared/config.js';
+
+// vi.hoisted ensures these are initialized before vi.mock factories run (hoisting semantics).
+const {
+  mockBundleContext,
+  mockValidate,
+  mockApplyFix,
+  mockOpenPr,
+  mockOpenIssue,
+  mockLintDiff,
+  mockAssemblePrompt,
+  mockSupervisorStop,
+  mockRunAgent,
+  mockCreateGeminiAdapter,
+} = vi.hoisted(() => {
+  const mockRunAgent = vi.fn();
+  const mockCreateGeminiAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
+  return {
+    mockBundleContext: vi.fn(),
+    mockValidate: vi.fn(),
+    mockApplyFix: vi.fn(),
+    mockOpenPr: vi.fn(),
+    mockOpenIssue: vi.fn(),
+    mockLintDiff: vi.fn(),
+    mockAssemblePrompt: vi.fn(),
+    mockSupervisorStop: vi.fn(),
+    mockRunAgent,
+    mockCreateGeminiAdapter,
+  };
+});
+
+vi.mock('./context-bundler.js', () => ({ bundleContext: mockBundleContext }));
+vi.mock('./validator.js', () => ({ validate: mockValidate }));
+vi.mock('./fix-applier.js', () => ({ applyFix: mockApplyFix, DiffApplyFailure: class extends Error {} }));
+vi.mock('./pr-writer.js', () => ({ openHealerPr: mockOpenPr, renderPrBody: vi.fn() }));
+vi.mock('./issue-writer.js', () => ({ openIssue: mockOpenIssue, renderIssueBody: vi.fn() }));
+vi.mock('./diff-lint.js', () => ({ lintDiff: mockLintDiff }));
+vi.mock('./prompt-assembler.js', () => ({ assemblePrompt: mockAssemblePrompt }));
+vi.mock('./app-supervisor.js', () => ({
+  stop: mockSupervisorStop,
+  PID_FILE_PATH: '/tmp/playwright-healer-app-pid',
+  AppStartupTimeout: class extends Error {},
+  waitForReady: vi.fn(),
+  readPidFile: vi.fn(),
+}));
+vi.mock('./adapters/gemini.js', () => ({ createGeminiAdapter: mockCreateGeminiAdapter }));
+vi.mock('./adapters/anthropic.js', () => ({
+  anthropicAdapter: { runAgent: vi.fn().mockRejectedValue(new Error('anthropic adapter not implemented in Phase 3')) },
+}));
+vi.mock('./adapters/ollama.js', () => ({
+  ollamaAdapter: { runAgent: vi.fn().mockRejectedValue(new Error('ollama adapter not implemented in Phase 3')) },
+}));
+
+let mockSetFailed = vi.fn();
+vi.mock('@actions/core', () => ({
+  setFailed: (msg: string) => mockSetFailed(msg),
+  warning: vi.fn(),
+  info: vi.fn(),
+  summary: { addRaw: vi.fn().mockReturnThis(), write: vi.fn().mockResolvedValue(undefined) },
+}));
+
+let mockPayload: any = {};
+vi.mock('@actions/github', () => ({
+  context: {
+    get payload() { return mockPayload; },
+    repo: { owner: 'acme', repo: 'repo' },
+    runId: 123,
+    serverUrl: 'https://github.com',
+  },
+}));
+
+import { run } from './index.js';
+import { BudgetExhausted } from './budget.js';
+
+const baseConfig: Config = {
+  mode: 'heal',
+  setupCommand: '', startCommand: '', testCommand: '', baseUrl: 'http://localhost:3000',
+  apiKey: 'test', healerToken: 'pat', githubToken: 'gh',
+  provider: 'gemini', model: '', apiEndpoint: '',
+  reportPath: 'r', flakeRateThreshold: 0.2, flakeWindowDays: 7, slowRegressionPct: 1.5,
+  rerunCount: 10, rerunPassRate: 0.9, maxBudgetUsd: 2.0, maxTurns: 30,
+  retentionDays: 90, maxHealsPerTestPerWeek: 3, stateBranchName: 'playwright-healer-state',
+  enableSelectorFixes: true, enableWaitFixes: true, enableAssertionFixes: true, enableSlowFixes: true,
+  startupTimeoutSeconds: 120,
+} as Config;
+
+const validPayload = {
+  commitSha: 'abc1234',
+  testFile: 'tests/checkout.spec.ts',
+  testTitle: 'completes purchase',
+  fixClassHint: 'selectors',
+};
+
+const validFixProposal = {
+  rootCause: 'Selector wrong',
+  fixClass: 'selectors' as const,
+  diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n',
+  rationale: 'getByRole is more stable',
+};
+
+// Helper: adapter return shape per revised contract (`{ proposal, stats }`).
+function adapterResult(proposal: any, stats = { usdSpent: 0.42, turnsUsed: 5 }) {
+  return { proposal, stats };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockSetFailed = vi.fn();
+  mockPayload = { inputs: validPayload };
+  mockBundleContext.mockResolvedValue({
+    testFile: validPayload.testFile, testTitle: validPayload.testTitle,
+    testFileSource: '', firstHopImports: {}, gitBlame: '',
+    traceAttachmentPath: null, recentErrorMessages: [],
+  });
+  mockAssemblePrompt.mockReturnValue('system prompt');
+  mockLintDiff.mockReturnValue([]);
+  mockApplyFix.mockResolvedValue({ branch: 'playwright-healer/X-abc1234', commitSha: 'deadbeef' });
+  mockOpenPr.mockResolvedValue('https://github.com/acme/repo/pull/1');
+  mockOpenIssue.mockResolvedValue('https://github.com/acme/repo/issues/1');
+  // Re-apply mockReturnValue for createGeminiAdapter since clearAllMocks clears implementations
+  mockCreateGeminiAdapter.mockReturnValue({ runAgent: mockRunAgent });
+});
+
+describe('run() — D-09 routing tree', () => {
+  it('Step 1: invalid dispatch payload calls core.setFailed and returns', async () => {
+    mockPayload = { inputs: { commitSha: 'not-hex' } };
+    await run(baseConfig);
+    expect(mockSetFailed).toHaveBeenCalledWith(expect.stringMatching(/Invalid dispatch payload/));
+    expect(mockOpenIssue).not.toHaveBeenCalled();
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('PRI-05: deterministic 0/N routes to deterministic-failure issue, adapter not called', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 0, total: 10, passRate: 0, perRun: [] });
+    await run(baseConfig);
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'deterministic-failure',
+    }));
+    expect(mockRunAgent).not.toHaveBeenCalled();
+    expect(mockApplyFix).not.toHaveBeenCalled();
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('FIX-02: BudgetExhausted from adapter routes to agent-budget-exhausted issue with at-throw stats', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
+    const err = new BudgetExhausted('test budget exhausted', { usdSpent: 0.5, turnsUsed: 10 });
+    mockRunAgent.mockRejectedValueOnce(err);
+    await run(baseConfig);
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'agent-budget-exhausted',
+    }));
+    // PRI-02 data path: issue body MUST mention the spend before the throw
+    const issueArgs = mockOpenIssue.mock.calls[0][0];
+    expect(issueArgs.rootCause).toMatch(/\$0\.5000/);
+    expect(issueArgs.rootCause).toMatch(/10 turn/);
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('FIX-08: NoFixProposable routes to no-fix-proposable issue, body includes stats', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult({ reason: 'no-fix-proposable', evidence: 'tried 9 selectors' }, { usdSpent: 0.30, turnsUsed: 8 }));
+    await run(baseConfig);
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'no-fix-proposable',
+    }));
+    const issueArgs = mockOpenIssue.mock.calls[0][0];
+    expect(issueArgs.suggestedManualFix).toMatch(/\$0\.3000/);
+    expect(issueArgs.suggestedManualFix).toMatch(/8 turn/);
+    expect(mockApplyFix).not.toHaveBeenCalled();
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('FIX-06: diff-lint findings route to diff-lint-blocked issue, body includes stats', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal, { usdSpent: 0.55, turnsUsed: 12 }));
+    mockLintDiff.mockReturnValueOnce([{ pattern: 'waitForTimeout', filePath: 'tests/x.spec.ts', hunkLine: 1, excerpt: '+ await page.waitForTimeout(3000);' }]);
+    await run(baseConfig);
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'diff-lint-blocked',
+    }));
+    const issueArgs = mockOpenIssue.mock.calls[0][0];
+    expect(issueArgs.suggestedManualFix).toMatch(/\$0\.5500/);
+    expect(mockApplyFix).not.toHaveBeenCalled();
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('VAL-03: pass rate below threshold routes to validation-failed issue, body includes stats', async () => {
+    // First validate (sanity) returns mid; second (post-fix) returns below threshold.
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 6, total: 10, passRate: 0.6, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal, { usdSpent: 0.77, turnsUsed: 15 }));
+    await run(baseConfig);
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'validation-failed',
+    }));
+    const issueArgs = mockOpenIssue.mock.calls[0][0];
+    expect(issueArgs.rootCause).toMatch(/\$0\.7700/);
+    expect(issueArgs.suggestedManualFix).toMatch(/15 turn/);
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('Happy path: opens a PR with costUsd from stats.usdSpent (PRI-02)', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal, { usdSpent: 0.42, turnsUsed: 5 }));
+    await run(baseConfig);
+    expect(mockOpenPr).toHaveBeenCalledWith(expect.objectContaining({
+      costUsd: 0.42, // PRI-02: REAL cost data, not 0
+    }));
+    expect(mockOpenIssue).not.toHaveBeenCalled();
+  });
+
+  it('PRI-02 regression guard: costUsd is never hardcoded 0 when stats.usdSpent > 0', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal, { usdSpent: 1.234, turnsUsed: 7 }));
+    await run(baseConfig);
+    const prArgs = mockOpenPr.mock.calls[0][0];
+    expect(prArgs.costUsd).not.toBe(0);
+    expect(prArgs.costUsd).toBeCloseTo(1.234, 3);
+  });
+});
+
+describe('run() — HEA-06 inner cleanup', () => {
+  it('calls supervisorStop on success', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run(baseConfig);
+    expect(mockSupervisorStop).toHaveBeenCalled();
+  });
+
+  it('calls supervisorStop when adapter throws unexpectedly', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
+    mockRunAgent.mockRejectedValueOnce(new Error('network meltdown'));
+    await expect(run(baseConfig)).rejects.toThrow();
+    expect(mockSupervisorStop).toHaveBeenCalled();
+  });
+});
+
+describe('run() — provider switch (D-01)', () => {
+  it('config.provider=anthropic → stub error propagates (not an issue route)', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
+    await expect(run({ ...baseConfig, provider: 'anthropic' })).rejects.toThrow(/anthropic adapter not implemented/);
+    expect(mockOpenIssue).not.toHaveBeenCalled();
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('config.provider=ollama → stub error propagates', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
+    await expect(run({ ...baseConfig, provider: 'ollama' })).rejects.toThrow(/ollama adapter not implemented/);
+  });
+
+  it('config.provider=gemini → createGeminiAdapter is called with config values', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run(baseConfig);
+    expect(mockCreateGeminiAdapter).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'test', maxTurns: 30, maxBudgetUsd: 2.0, baseUrl: 'http://localhost:3000',
+    }));
+  });
+});
