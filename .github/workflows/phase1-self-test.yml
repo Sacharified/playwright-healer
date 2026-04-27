@@ -26,6 +26,27 @@ jobs:
         with:
           persist-credentials: false
 
+      # ──────────────────────────────────────────────────────────────────
+      # Phase 01.3 SC#2 (option a): pre-register the canary with the runner
+      # masker BEFORE `uses: ./` so the masker is engaged when the runner
+      # emits the action's step header (which contains `with: api-key:
+      # <canary>` AND `INPUT_API-KEY: <canary>`). Masking is non-retroactive
+      # (RESEARCH §Pattern 4 / Pitfall 4) — registration MUST precede the
+      # log line that would otherwise emit the secret.
+      #
+      # What this verifies: the runner masker correctly redacts the canary
+      # in the step header AND in any log lines emitted by the action body.
+      #
+      # What this does NOT directly verify: that src/index.ts calls
+      # core.setSecret() correctly. That contract is verified by Scenario 4,
+      # which greps the dispatcher-emitted dry-run-summary output for canary
+      # absence (the markdown table redacts api-key independently of any
+      # upstream masking).
+      # ──────────────────────────────────────────────────────────────────
+      - name: Pre-register canary with runner masker
+        shell: bash
+        run: echo "::add-mask::test-canary-DO-NOT-USE-REAL-KEY"
+
       - name: Invoke action with dry-run and inline canary API key
         uses: ./
         with:
@@ -136,9 +157,13 @@ jobs:
           echo "OK: empty api-key + provider=anthropic produced failure outcome"
 
   # ──────────────────────────────────────────────────────────────────
-  # SCENARIO 4 (CFG-05 happy path) — dry-run exits 0 and writes redacted summary.
-  # Artifact step also cross-checks the summary file has no canary leak
-  # (defense-in-depth on top of Scenario 1's log grep).
+  # SCENARIO 4 (CFG-05 happy path / TEST-01) — dry-run exits 0 and the
+  # composite-action output `dry-run-summary` carries a redacted markdown
+  # table with no canary leak. Reads from steps.run.outputs.dry-run-summary
+  # rather than $GITHUB_STEP_SUMMARY (which is per-step — Phase 01.3 SC#1).
+  # Defense-in-depth on top of Scenario 1's log grep: this scenario verifies
+  # the dispatcher's setSecret-driven redaction in the markdown table; that
+  # is the contract Scenario 1 option (a) does NOT directly verify.
   # ──────────────────────────────────────────────────────────────────
 
   self-test-dry-run:
@@ -161,41 +186,42 @@ jobs:
           healer-token: 'test-canary-healer-token'
           github-token: ${{ github.token }}
 
-      - name: Assert success and summary file present without canary leak
+      - name: Assert success and dry-run-summary output redacts canary
         shell: bash
+        env:
+          SUMMARY: ${{ steps.run.outputs.dry-run-summary }}
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "success" ]; then
             echo "::error::Expected success for dry-run, got outcome=${{ steps.run.outcome }}"
             exit 1
           fi
-          # $GITHUB_STEP_SUMMARY accumulates across steps in the same job.
-          # At this point the previous step populated it.
-          if [ -s "$GITHUB_STEP_SUMMARY" ]; then
-            if grep -q 'test-canary-DO-NOT-USE-REAL-KEY' "$GITHUB_STEP_SUMMARY"; then
-              echo "::error::Canary appeared in \$GITHUB_STEP_SUMMARY — dry-run redaction FAILED"
-              exit 1
-            fi
-            if ! grep -q 'dry-run summary' "$GITHUB_STEP_SUMMARY"; then
-              echo "::error::Expected 'dry-run summary' marker in \$GITHUB_STEP_SUMMARY — dispatcher did not write the redacted output"
-              exit 1
-            fi
-            if ! grep -q '| `provider` | anthropic |' "$GITHUB_STEP_SUMMARY"; then
-              echo "::error::Expected 'provider | anthropic' row in \$GITHUB_STEP_SUMMARY — new 01.1 provider input not reaching dry-run output"
-              exit 1
-            fi
-          else
-            echo "::error::\$GITHUB_STEP_SUMMARY was empty — runDryRun helper regression; Scenario 4 expects a redacted summary dump"
+          if [ -z "$SUMMARY" ]; then
+            echo "::error::dry-run-summary output was empty — runDryRun helper regression OR composite-action output mapping broken (check action.yml outputs.dry-run-summary.value AND id: run-playwright-healer on Step 6)"
             exit 1
           fi
-          echo "OK: dry-run success + summary redaction verified"
+          if echo "$SUMMARY" | grep -q 'test-canary-DO-NOT-USE-REAL-KEY'; then
+            echo "::error::Canary appeared in dry-run-summary output — redaction FAILED"
+            exit 1
+          fi
+          if ! echo "$SUMMARY" | grep -q 'dry-run summary'; then
+            echo "::error::Expected 'dry-run summary' marker in output — dispatcher did not write the redacted output"
+            exit 1
+          fi
+          if ! echo "$SUMMARY" | grep -q '| `provider` | anthropic |'; then
+            echo "::error::Expected 'provider | anthropic' row — new 01.1 provider input not reaching dry-run output"
+            exit 1
+          fi
+          echo "OK: dry-run success + summary redaction verified via composite-action output"
 
   # ──────────────────────────────────────────────────────────────────
-  # SCENARIO 5 (01.1 — Ollama empty-key dry-run path) — load-bearing test
-  # for the `required: true` removal on api-key. With provider=ollama,
-  # empty api-key MUST NOT trigger the Zod superRefine issue, and the
-  # dispatcher MUST exit 0. Also proves the new provider/api-endpoint
-  # inputs reach the dry-run summary output.
+  # SCENARIO 5 (01.1 — Ollama empty-key dry-run path / TEST-01) — load-
+  # bearing test for the `required: true` removal on api-key. With
+  # provider=ollama, empty api-key MUST NOT trigger the Zod superRefine
+  # issue, and the dispatcher MUST exit 0. Also proves the new provider/
+  # api-endpoint inputs reach the dry-run summary output. Reads from
+  # steps.run.outputs.dry-run-summary rather than $GITHUB_STEP_SUMMARY
+  # (per Phase 01.3 SC#1 fix).
   # ──────────────────────────────────────────────────────────────────
 
   self-test-ollama-empty-key:
@@ -217,31 +243,33 @@ jobs:
           healer-token: 'test-canary-healer-token'
           github-token: ${{ github.token }}
 
-      - name: Assert success + summary reflects ollama provider + endpoint
+      - name: Assert success + dry-run-summary output reflects ollama provider + endpoint
         shell: bash
+        env:
+          SUMMARY: ${{ steps.run.outputs.dry-run-summary }}
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "success" ]; then
             echo "::error::Expected success for provider=ollama + empty api-key, got outcome=${{ steps.run.outcome }}"
             exit 1
           fi
-          if [ ! -s "$GITHUB_STEP_SUMMARY" ]; then
-            echo "::error::\$GITHUB_STEP_SUMMARY was empty"
+          if [ -z "$SUMMARY" ]; then
+            echo "::error::dry-run-summary output was empty"
             exit 1
           fi
-          if ! grep -q '| `provider` | ollama |' "$GITHUB_STEP_SUMMARY"; then
-            echo "::error::Expected 'provider | ollama' row in summary"
+          if ! echo "$SUMMARY" | grep -q '| `provider` | ollama |'; then
+            echo "::error::Expected 'provider | ollama' row in output"
             exit 1
           fi
-          if ! grep -q '| `api-endpoint` | http://localhost:11434 |' "$GITHUB_STEP_SUMMARY"; then
-            echo "::error::Expected api-endpoint row with localhost:11434 in summary"
+          if ! echo "$SUMMARY" | grep -q '| `api-endpoint` | http://localhost:11434 |'; then
+            echo "::error::Expected api-endpoint row with localhost:11434 in output"
             exit 1
           fi
-          if ! grep -q '(empty — allowed for ollama)' "$GITHUB_STEP_SUMMARY"; then
+          if ! echo "$SUMMARY" | grep -q '(empty — allowed for ollama)'; then
             echo "::error::Expected 'empty — allowed for ollama' api-key cell — dispatcher did not detect the ollama-exception path"
             exit 1
           fi
-          echo "OK: ollama empty-key dry-run path verified"
+          echo "OK: ollama empty-key dry-run path verified via composite-action output"
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 6 (Phase 01.2 — npx-tsx env-var stripping regression test).
