@@ -1,11 +1,18 @@
 ---
-status: blocked
+status: partial
 phase: 03-manual-healer-selectors-waits-issue-fallback
 source: [03-VERIFICATION.md]
 started: 2026-04-27T15:15:00Z
-updated: 2026-04-27T17:30:00Z
-blocked_by:
-  - "Phase 01 bug: action.yml Step 6 `npx tsx src/index.ts` strips hyphenated env vars before they reach Node, so `core.getInput('healer-token')` throws on every invocation"
+updated: 2026-04-27T20:35:00Z
+g01_resolved_via: .planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md
+g01_resolved_evidence: |
+  Phase 01.2 deployed `./node_modules/.bin/tsx` at both action.yml call sites + new
+  self-test-hyphenated-input-env regression job. Live ubuntu-latest run on 2026-04-27
+  shows the regression job green — hyphenated INPUT_* env vars survive the spawn shape
+  on the real runner. Job A of Scenario 1 (self-test-masking) also runs end-to-end
+  to completion, confirming `getInput('healer-token', { required: true })` no longer
+  throws. SC-1 / SC-3 are unblocked at the env-var layer; remaining Test 1 + Test 2
+  re-attempt is independent of the env-var bug.
 ---
 
 ## Current Test
@@ -23,7 +30,9 @@ actually running on it — not a vacuous "all checks passed" with zero check run
 PR creation requires a PAT (`healer-token` input) — `GITHUB_TOKEN` cannot trigger
 downstream CI on bot-opened PRs (GitHub recursion guard).
 
-result: BLOCKED — pre-existing Phase 01 bug surfaces before SC-1 can be exercised.
+result: pending — env-var blocker is resolved by Phase 01.2 (G-01 closed 2026-04-27);
+re-attempt the SC-1 fixture run on Sacharified/playwright-healer-test now that
+hyphenated INPUT_* survives the action's spawn shape on ubuntu-latest.
 
 evidence:
 - Throwaway fixture repo created: Sacharified/playwright-healer-test (private clone of playwright-healer at SHA 40cc6c9 + Express app with `<button id="correct-id">` + Playwright test using `#wrong-id` + 2 workflows: sc1-healer.yml dispatch + fixture-ci.yml on PR)
@@ -77,9 +86,9 @@ result: [pending]
 total: 2
 passed: 0
 issues: 0
-pending: 1
+pending: 2
 skipped: 0
-blocked: 1
+blocked: 0
 
 ## Gaps
 
@@ -88,6 +97,17 @@ blocked: 1
 severity: high
 phase_origin: 01-security-scaffold-composite-packaging
 detected_via: SC-1 live verification on Sacharified/playwright-healer-test run 25009578022
+status: resolved
+resolved_in: 01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime
+resolved_at: 2026-04-27T20:30:00Z
+resolution_evidence: |
+  Phase 01.2 replaced `npx tsx` with `./node_modules/.bin/tsx` at both action.yml
+  call sites (Step 5 wait-for-ready.ts and Step 6 src/index.ts). Live ubuntu-latest
+  run on 2026-04-27 shows the new self-test-hyphenated-input-env regression job
+  green (`OK: INPUT_FOO-BAR survived spawn`), and Scenario 1 Job A (self-test-masking)
+  runs end-to-end to completion — direct confirmation that
+  `getInput('healer-token', { required: true })` no longer throws on the real runner.
+  See `01.2-01-SUMMARY.md` and `01.2-VERIFICATION.md`.
 description: action.yml Step 6 invokes the action's runtime via `npx tsx src/index.ts`.
   The npx-tsx-node spawn chain drops env vars with hyphens in their names (verified
   empirically: `node -e ...` preserves them, `npx tsx -e ...` does not). Every
@@ -99,4 +119,4 @@ recommended_remediation: Replace `npx tsx src/index.ts` with `./node_modules/.bi
   in action.yml Step 6 (and the Step 5 `wait-for-ready.ts` invocation, same shape).
   Add a regression test step in phase1-self-test.yml that asserts a hyphenated
   INPUT_* var survives `npx tsx`-style spawn.
-followup: Phase 01.2 gap closure plan needed before SC-1 / SC-3 can be re-attempted.
+followup: SC-1 / SC-3 can now be re-attempted on the fixture repo.
