@@ -64,7 +64,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01.3-01-PLAN.md — runDryRun setOutput + action.yml outputs.dry-run-summary + Scenario 1 ::add-mask:: + Scenarios 4/5 env-indirection + 2 new vitest tests + live-CI gate (TEST-01)
+- [x] 01.3-01-PLAN.md — runDryRun setOutput + action.yml outputs.dry-run-summary + Scenario 1 ::add-mask:: + Scenarios 4/5 env-indirection + 2 new vitest tests + live-CI gate (TEST-01)
 
 ### Phase 1.1: Multi-Provider Input Surface (INSERTED)
 **Goal**: The action's input surface is provider-agnostic — the same `api-key` input is consumed by Anthropic, Gemini, and Ollama adapters (adapters land in Phase 3). Empty `api-key` is allowed when `provider=ollama` so users can point at a local Ollama instance without auth.
