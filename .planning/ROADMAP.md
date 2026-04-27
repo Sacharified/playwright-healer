@@ -80,7 +80,20 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. When the fixture app fails to start within `startup-timeout-seconds`, the healer exits cleanly and files a structured issue rather than running the agent loop; no zombie processes remain on the runner
   4. Running the healer against a test that fails deterministically (0/N reruns pass on unmodified code) routes to issue-fallback with a "probable application bug" classification, not a PR
   5. Every bot commit on a healer PR branch contains `[skip-healer]` in the commit message
-**Plans**: TBD
+**Plans**: 13 plans
+- [ ] 03-01-PLAN.md — Foundations: deps + config CFG-04 toggles + startupTimeoutSeconds (CFG-04)
+- [ ] 03-02-PLAN.md — Type contracts: types.ts + adapter.ts + dispatch-payload.ts + tests (FIX-04)
+- [ ] 03-03-PLAN.md — Forbidden patterns + diff-lint + 5 patch fixtures (FIX-03, FIX-06)
+- [ ] 03-04-PLAN.md — 7 prompt templates + prompt-assembler + tests (FIX-03, HEA-05)
+- [ ] 03-05-PLAN.md — BudgetTracker + stub adapters (FIX-01, FIX-02)
+- [ ] 03-06-PLAN.md — App-supervisor readiness probe + PID file constant (HEA-02, HEA-03, HEA-06)
+- [ ] 03-07-PLAN.md — Context bundler with first-hop imports + path safety (HEA-04, HEA-05)
+- [ ] 03-08-PLAN.md — Validator (--retries=0 / --workers=1 / N reruns) + Playwright JSON fixtures (VAL-01..04)
+- [ ] 03-09-PLAN.md — Fix-applier rebase + diff apply + [skip-healer] commit (FIX-05, PRI-06)
+- [ ] 03-10-PLAN.md — Gemini adapter: manual loop + audit invariant + budget gate (FIX-01, FIX-02, FIX-04, SEC-03, SEC-04)
+- [ ] 03-11-PLAN.md — PR-writer (PAT auth) + issue-writer (six failure-mode tokens) (PRI-01..03, PRI-06, VAL-05)
+- [ ] 03-12-PLAN.md — Heal orchestrator: 11-step pipeline + D-09 routing tree (HEA-01, HEA-06, FIX-08, PRI-05)
+- [ ] 03-13-PLAN.md — action.yml two-step app supervisor + post-cleanup + wait-for-ready CLI (HEA-01, HEA-02, HEA-03, HEA-06)
 
 ### Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication
 **Goal**: The threshold evaluator fires live `workflow_dispatch` events when tests breach thresholds; the healer handles all four fix classes (selectors, waits, assertions, slow-test optimizations); repeat triggers for the same test update the existing open PR or issue rather than creating duplicates
@@ -125,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Security Scaffold + Composite Packaging | 6/6 | Complete | 2026-04-25 |
 | 1.1 Multi-Provider Input Surface | 1/1 | Complete | 2026-04-25 |
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
-| 3. Manual Healer (Selectors + Waits + Issue Fallback) | 0/TBD | Not started | - |
+| 3. Manual Healer (Selectors + Waits + Issue Fallback) | 0/13 | Planned | - |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
 | 6. Documentation + Release | 0/TBD | Not started | - |
