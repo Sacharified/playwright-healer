@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-04-27T18:05:40.312Z"
-last_activity: 2026-04-27 -- Phase 03 execution started
+stopped_at: Completed 01.2-01-PLAN.md
+last_updated: "2026-04-27T18:54:46.088Z"
+last_activity: 2026-04-27 -- Phase --phase execution started
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 29
-  completed_plans: 30
+  completed_plans: 31
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-25)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 03 — manual-healer-selectors-waits-issue-fallback
+**Current focus:** Phase 01.2 complete locally (live ubuntu-latest verification pending push); next: Phase 03 SC-1/SC-3 re-attempt
 
 ## Current Position
 
-Phase: 03 (manual-healer-selectors-waits-issue-fallback) — EXECUTING
-Plan: 1 of 15
-Status: Executing Phase 03
-Last activity: 2026-04-27 -- Phase 03 execution started
+Phase: 01.2 — COMPLETE (locally; live verification pending push)
+Plan: 1 of 1 complete
+Status: Phase 01.2 P01 fix landed; awaiting first push to trigger phase1-self-test.yml on ubuntu-latest with all six jobs green
+Last activity: 2026-04-27 — Phase 01.2 P01 executed (path-resolved tsx fix + regression-test job)
 
-Progress: [██████████] 100% (7/7 Phase 1+1.1 plans complete)
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [██████████] 100% (7/7 Phase 1+1.1 plans complete)
 | Phase 01-security-scaffold-composite-packaging P04 | 12min | 2 tasks | 2 files |
 | Phase 01-security-scaffold-composite-packaging P05 | 4m | 2 tasks | 2 files |
 | Phase 01-security-scaffold-composite-packaging P06 | 5m | 1 tasks | 1 files |
+| Phase 01.2 P01 | 3min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - TWO-JOB pattern mandatory for Scenario 1 — in-job log grep races log API finalization; Job B needs: A + if: always() is the only reliable approach (Pitfall 9 / Pattern 13)
 - Canary inline literal test-canary-DO-NOT-USE-REAL-KEY not secrets.* — fresh fork has no secrets; storing as secret silently breaks every contributor's first push (Pitfall 8)
 - Scenario 4 hard-fails on empty GITHUB_STEP_SUMMARY — runDryRun writes summary unconditionally; empty file is a helper regression indicator, not a benign environment quirk
+- Phase 01.2 P01: ./node_modules/.bin/tsx (path-resolved) replaces npx tsx at action.yml Steps 5 + 6 — empirical local gate exit_code=0; live ubuntu-latest verification pending push
+- Regression-test job self-test-hyphenated-input-env added to phase1-self-test.yml as isolated Scenario 6 — does not invoke 'uses: ./' to avoid Zod superRefine noise; failure points directly at the spawn line
 
 ### Pending Todos
 
@@ -95,7 +98,7 @@ None yet.
 
 - **Phase 1 gate:** Native SDK binary discovery (`npm ci --production` installing `@anthropic-ai/claude-agent-sdk-linux-x64` on ubuntu-latest) is unverified — must smoke-test before agent code is written
 - **Phase 3 gate:** Agent system prompt structure for four-stage CI remediation loop has no established template — budget iteration time
-- **Phase 03 SC-1/SC-3 blocked:** Live verification of PR-creation-with-CI and zombie-cleanup is blocked by Phase 01 npx-tsx env-var stripping bug (recorded as 03-HUMAN-UAT.md G-01). Resolved by inserted Phase 01.2.
+- **Phase 03 SC-1/SC-3 unblock signal pending:** Phase 01.2 P01 fix landed locally (commits c0c2f21 + a37df83); empirical-validation gate exit_code=0 on darwin. Live `phase1-self-test.yml` run on ubuntu-latest must show all six jobs green (including new `self-test-hyphenated-input-env`) before 03-HUMAN-UAT.md G-01 can be closed and Phase 03 SC-1/SC-3 re-attempted.
 
 ### Roadmap Evolution
 
@@ -113,8 +116,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 3 context gathered
-Resume file: --resume-file
+Last session: 2026-04-27T18:54:38.625Z
+Stopped at: Completed 01.2-01-PLAN.md
+Resume file: None
 
 **Planned Phase:** 01.2 (Fix npx tsx env-var stripping in composite action runtime (INSERTED)) — 1 plans — 2026-04-27T18:05:40.306Z

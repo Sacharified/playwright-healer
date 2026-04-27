@@ -14,6 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Security Scaffold + Composite Packaging** (complete 2026-04-25) - Establish the composite action structure with all four architecturally-binding security controls in place before any agent code is written. UAT items resolved equivalently by Phase 1.1 CI run.
 - [x] **Phase 1.1: Multi-Provider Input Surface** (INSERTED, complete 2026-04-25) - Generalize the Anthropic-specific input surface to support Anthropic, Gemini, and Ollama via a `provider` input; drop `required: true` on `api-key` with per-provider Zod `superRefine` enforcement; adapters land in Phase 3
+- [x] **Phase 1.2: Fix npx tsx env-var stripping in composite action runtime** (INSERTED, complete 2026-04-27) - Replace `npx tsx` with path-resolved `./node_modules/.bin/tsx` at action.yml Steps 5 and 6 to preserve hyphenated `INPUT_*` env vars on ubuntu-latest; add dedicated `self-test-hyphenated-input-env` regression-test job in phase1-self-test.yml; unblocks Phase 03 SC-1/SC-3 live verification
 - [x] **Phase 2: Ingest + State Branch + Log-Only Detection** (complete 2026-04-25) - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
 - [ ] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** - Wire the full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback for all failure modes
 - [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
@@ -47,7 +48,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 1 plan
 
 Plans:
-- [ ] 01.2-01-PLAN.md — Empirical gate + action.yml two-site fix + dedicated regression job in phase1-self-test.yml
+- [x] 01.2-01-PLAN.md — Empirical gate + action.yml two-site fix + dedicated regression job in phase1-self-test.yml (complete 2026-04-27; see 01.2-01-SUMMARY.md)
 
 ### Phase 1.1: Multi-Provider Input Surface (INSERTED)
 **Goal**: The action's input surface is provider-agnostic — the same `api-key` input is consumed by Anthropic, Gemini, and Ollama adapters (adapters land in Phase 3). Empty `api-key` is allowed when `provider=ollama` so users can point at a local Ollama instance without auth.
