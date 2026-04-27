@@ -6,6 +6,10 @@ inputs:
   mode:
     description: 'Run mode: ingest | heal | dry-run'
     required: true
+  commit-sha:
+    description: 'Commit SHA to checkout for heal mode (HEA-01). Defaults to empty (uses HEAD).'
+    required: false
+    default: ''
   api-key:
     description: 'Inference-provider API key (Anthropic, Gemini, or — for Ollama localhost — may be empty)'
     required: false
@@ -119,16 +123,51 @@ inputs:
 runs:
   using: composite
   steps:
+    # Step 1 (NEW) — Checkout dispatch SHA, heal-only (HEA-01)
+    - name: Checkout dispatch SHA (heal mode)
+      if: inputs.mode == 'heal' && inputs.commit-sha != ''
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified SHA
+      with:
+        ref: ${{ inputs.commit-sha }}
+        persist-credentials: false           # SEC-01
+
+    # Step 2 (existing)
     - name: Install action dependencies
       shell: bash
       working-directory: ${{ github.action_path }}
       run: npm ci --production
 
+    # Step 3 (existing)
     - name: Set up Node
-      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0 — re-verified at execution per D-20
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
       with:
         node-version: '24'
 
+    # Step 4 (NEW) — setup-command sync (D-14 step 3)
+    - name: Run setup-command (sync, heal mode)
+      if: inputs.mode == 'heal' && inputs.setup-command != ''
+      shell: bash
+      run: ${{ inputs.setup-command }}
+
+    # Step 5 (NEW) — spawn start-command + wait for ready (D-14 step 4 + HEA-02 + HEA-03)
+    - name: Spawn start-command + wait for ready (heal mode)
+      if: inputs.mode == 'heal' && inputs.start-command != ''
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        BASE_URL: ${{ inputs.base-url }}
+        STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup-timeout-seconds }}
+        HEALER_TOKEN: ${{ inputs.healer-token }}
+        GH_OWNER: ${{ github.repository_owner }}
+        GH_REPO: ${{ github.event.repository.name }}
+        TEST_TITLE: ${{ github.event.inputs.testTitle }}
+        TRIGGERING_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        bash -c "${{ inputs.start-command }}" &
+        echo $! > /tmp/playwright-healer-app-pid
+        npx tsx src/healer/wait-for-ready.ts
+
+    # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
     - name: Run playwright-healer
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -159,4 +198,16 @@ runs:
         INPUT_ENABLE-ASSERTION-FIXES: ${{ inputs.enable-assertion-fixes }}
         INPUT_ENABLE-SLOW-FIXES: ${{ inputs.enable-slow-fixes }}
         INPUT_STARTUP-TIMEOUT-SECONDS: ${{ inputs.startup-timeout-seconds }}
+        # Phase 3 — orchestrator reads HEALER_DEFAULT_BRANCH for fix-applier rebase target
+        HEALER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: npx tsx src/index.ts
+
+    # Step 7 (NEW) — outer cleanup post-step (D-12 layer 2 / HEA-06)
+    - name: Cleanup leaked processes (always, heal mode)
+      if: always() && inputs.mode == 'heal'
+      shell: bash
+      run: |
+        pkill -f "playwright-mcp" || true
+        if [[ -f /tmp/playwright-healer-app-pid ]]; then
+          kill "$(cat /tmp/playwright-healer-app-pid)" 2>/dev/null || true
+        fi
