@@ -95,6 +95,27 @@ inputs:
     required: false
     default: '3'
 
+  enable-selector-fixes:
+    description: 'Enable selector-class fixes (Phase 3+). Default: true'
+    required: false
+    default: 'true'
+  enable-wait-fixes:
+    description: 'Enable wait/timing-class fixes (Phase 3+). Default: true'
+    required: false
+    default: 'true'
+  enable-assertion-fixes:
+    description: 'Enable assertion-class fixes (Phase 4+). Default: true (toggle-only in Phase 3)'
+    required: false
+    default: 'true'
+  enable-slow-fixes:
+    description: 'Enable slow-test-class fixes (Phase 4+). Default: true (toggle-only in Phase 3)'
+    required: false
+    default: 'true'
+  startup-timeout-seconds:
+    description: 'Max seconds to wait for start-command app to become ready (heal mode). Default: 120'
+    required: false
+    default: '120'
+
 runs:
   using: composite
   steps:
@@ -133,4 +154,9 @@ runs:
         INPUT_MAX-TURNS: ${{ inputs.max-turns }}
         INPUT_RETENTION-DAYS: ${{ inputs.retention-days }}
         INPUT_MAX-HEALS-PER-TEST-PER-WEEK: ${{ inputs.max-heals-per-test-per-week }}
+        INPUT_ENABLE-SELECTOR-FIXES: ${{ inputs.enable-selector-fixes }}
+        INPUT_ENABLE-WAIT-FIXES: ${{ inputs.enable-wait-fixes }}
+        INPUT_ENABLE-ASSERTION-FIXES: ${{ inputs.enable-assertion-fixes }}
+        INPUT_ENABLE-SLOW-FIXES: ${{ inputs.enable-slow-fixes }}
+        INPUT_STARTUP-TIMEOUT-SECONDS: ${{ inputs.startup-timeout-seconds }}
       run: npx tsx src/index.ts

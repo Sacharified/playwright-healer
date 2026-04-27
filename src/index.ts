@@ -67,6 +67,12 @@ async function main(): Promise<void> {
     maxTurns:                core.getInput('max-turns'),
     retentionDays:           core.getInput('retention-days'),
     maxHealsPerTestPerWeek:  core.getInput('max-heals-per-test-per-week'),
+    // ── CFG-04: Per-fix-class toggles + startup timeout (Phase 3) ─────────
+    enableSelectorFixes:    core.getInput('enable-selector-fixes'),
+    enableWaitFixes:        core.getInput('enable-wait-fixes'),
+    enableAssertionFixes:   core.getInput('enable-assertion-fixes'),
+    enableSlowFixes:        core.getInput('enable-slow-fixes'),
+    startupTimeoutSeconds:  core.getInput('startup-timeout-seconds'),
   };
 
   // ── Phase B': YAML MERGE (CFG-06/CFG-07; load-bearing for SC#4) ─────────
