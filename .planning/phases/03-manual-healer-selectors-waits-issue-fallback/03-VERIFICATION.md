@@ -1,8 +1,9 @@
 ---
 phase: 03-manual-healer-selectors-waits-issue-fallback
 verified: 2026-04-27T15:30:00Z
-status: gaps_found
-score: 4/5 must-haves verified
+revised: 2026-04-27T15:11:00Z
+status: human_needed
+score: 5/5 must-haves verified
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
@@ -10,24 +11,15 @@ re_verification:
   gaps_closed:
     - "Action reproduces failure in consumer workspace and validates fix against consumer tests (HI-01)"
     - "Every non-PR exit produces a structured GitHub issue (D-09 no silent failures) (HI-03)"
-  gaps_partially_closed:
-    - "Diff-lint blocks forbidden patterns without false-positives on valid agent fixes (HI-02 → WR-01)"
-  gaps_remaining:
-    - "Diff-lint xpath-prefix regex over-broadens to Playwright getBy* text-locator family (WR-01)"
+    - "Diff-lint blocks forbidden patterns without false-positives on valid agent fixes (HI-02 + WR-01 — closed in commit 86c8cb0)"
+  gaps_partially_closed: []
+  gaps_remaining: []
   regressions: []
-gaps:
-  - truth: "Diff-lint blocks forbidden patterns without false-positives on valid agent fixes"
-    status: partial
-    reason: "WR-01: HI-02's TypeScript-comment false-positive is closed, but the suggested-fix regex includes getBy\\w+ in the alternation. Playwright getByText / getByLabel / getByRole / getByPlaceholder / getByTitle / getByAltText / getByTestId interpret their string argument as literal text (or role/test-id) — NOT as a selector. A leading // is two literal slash characters, not XPath syntax. Any agent fix using these APIs whose argument starts with // gets routed to diff-lint-blocked. Same class of failure as the original HI-02, narrower scope. The matching test at diff-lint.test.ts:99-103 actively asserts the wrong invariant ('flags getByText with // XPath prefix (true positive — getBy* family)' expects toBe(true) when the correct contract is toBe(false)), so the 240-test green suite does not catch the regression — the test mirrors the bug. Plan-was-wrong: 03-14-PLAN must_haves explicitly listed 'diff-lint blocks getByText('//...') patterns' so the executor implemented faithfully. The PLAN is the bug, not the executor."
-    artifacts:
-      - path: "src/healer/forbidden-patterns.ts"
-        issue: "Line 22 regex /(?:locator|waitForSelector|getBy\\w+)\\s*\\(\\s*['\"`]\\/\\// — getBy\\w+ alternation incorrect; only locator and waitForSelector accept selector-string arguments where // is XPath syntax."
-      - path: "src/healer/diff-lint.test.ts"
-        issue: "Line 99-103 test 'flags getByText with // XPath prefix (true positive — getBy* family)' asserts toBe(true) but Playwright API contract says getByText takes literal text — assertion encodes the bug."
-    missing:
-      - "Drop getBy\\w+ from the alternation: change re to /(?:locator|waitForSelector)\\s*\\(\\s*['\"`]\\/\\//"
-      - "Flip the diff-lint.test.ts:99-103 assertion to toBe(false) and rename to 'does NOT flag getByText with // literal-text argument (false-positive guard)'; move into the existing 'xpath-prefix false-positive regression (HI-02)' describe block"
-      - "Add a second guard test covering getByLabel / getByRole(name:) / getByPlaceholder / getByTitle / getByAltText / getByTestId with literal-text strings starting with // to lock the contract"
+gaps: []
+post_verification_fix:
+  finding: WR-01
+  closed_in: 86c8cb0
+  description: "Narrowed xpath-prefix regex to /(?:locator|waitForSelector)\\s*\\(\\s*['\"`]\\/\\// per verifier's prescribed remediation. Flipped the diff-lint.test.ts assertion from toBe(true) to toBe(false) (now: 'does NOT flag getByText with // literal-text argument'). Added a guard test covering getByLabel / getByRole / getByPlaceholder / getByAltText / getByTestId with literal-text arguments starting with //. 241 tests pass (was 240 — added one guard test); typecheck clean."
 human_verification:
   - test: "End-to-end heal pass with fixture broken selector"
     expected: "Manually trigger the healer workflow with a fixture test containing page.locator('#wrong-id') where the element is #correct-id. Verify a PR titled '[playwright-healer] Fix flaky <test title>' appears with CI checks actually running on it — not 'all checks passed' vacuously."
