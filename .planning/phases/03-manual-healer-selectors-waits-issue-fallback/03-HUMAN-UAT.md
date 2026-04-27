@@ -1,14 +1,16 @@
 ---
-status: partial
+status: blocked
 phase: 03-manual-healer-selectors-waits-issue-fallback
 source: [03-VERIFICATION.md]
 started: 2026-04-27T15:15:00Z
-updated: 2026-04-27T15:15:00Z
+updated: 2026-04-27T17:30:00Z
+blocked_by:
+  - "Phase 01 bug: action.yml Step 6 `npx tsx src/index.ts` strips hyphenated env vars before they reach Node, so `core.getInput('healer-token')` throws on every invocation"
 ---
 
 ## Current Test
 
-[awaiting human testing]
+[blocked by Phase 01 npx-tsx env-var bug — see Test 1 result]
 
 ## Tests
 
@@ -21,7 +23,41 @@ actually running on it — not a vacuous "all checks passed" with zero check run
 PR creation requires a PAT (`healer-token` input) — `GITHUB_TOKEN` cannot trigger
 downstream CI on bot-opened PRs (GitHub recursion guard).
 
-result: [pending]
+result: BLOCKED — pre-existing Phase 01 bug surfaces before SC-1 can be exercised.
+
+evidence:
+- Throwaway fixture repo created: Sacharified/playwright-healer-test (private clone of playwright-healer at SHA 40cc6c9 + Express app with `<button id="correct-id">` + Playwright test using `#wrong-id` + 2 workflows: sc1-healer.yml dispatch + fixture-ci.yml on PR)
+- Three runs attempted on 2026-04-27:
+  - 25006212165 (initial): failed at action input validation
+  - 25009034721 (after secret reset): same failure
+  - 25009578022 (with diagnostic): same failure, root cause confirmed
+- Diagnostic on run 25009578022:
+  - bash printenv: `INPUT_HEALER-TOKEN len=93` (env var transits to bash)
+  - `node -e "process.env['INPUT_HEALER-TOKEN'].length"`: 93 ✓ (Node sees it)
+  - `npx tsx -e "process.env['INPUT_HEALER-TOKEN'].length"`: 0 ✗ (npx tsx STRIPS it)
+  - `npx tsx -e "process.env['INPUT_HEALER_TOKEN_UNDERSCORE'].length"`: 93 ✓ (underscored names survive)
+- Pre-existing: Sacharified/playwright-healer's phase1-self-test workflow has been failing
+  with the identical symptom on every run since 2026-04-25 (per `gh run list -R Sacharified/playwright-healer --workflow phase1-self-test.yml`). The bug was caught
+  by CI but not surfaced into VERIFICATION because the unit tests (which mock @actions/core
+  directly) bypass the npx tsx invocation chain.
+
+root_cause: action.yml Step 6 invokes the agent via `npx tsx src/index.ts`. The npx →
+tsx → node spawn chain drops environment variables whose names contain hyphens. Every
+hyphenated input (INPUT_HEALER-TOKEN, INPUT_API-KEY, INPUT_GITHUB-TOKEN, INPUT_BASE-URL,
+INPUT_SETUP-COMMAND, INPUT_START-COMMAND, INPUT_TEST-COMMAND, INPUT_API-ENDPOINT,
+INPUT_REPORT-PATH, INPUT_FLAKE-RATE-THRESHOLD, INPUT_FLAKE-WINDOW-DAYS, INPUT_SLOW-REGRESSION-PCT,
+INPUT_RERUN-COUNT, INPUT_RERUN-PASS-RATE, INPUT_MAX-BUDGET-USD, INPUT_MAX-TURNS,
+INPUT_RETENTION-DAYS, INPUT_MAX-HEALS-PER-TEST-PER-WEEK, INPUT_ENABLE-SELECTOR-FIXES,
+INPUT_ENABLE-WAIT-FIXES, INPUT_ENABLE-ASSERTION-FIXES, INPUT_ENABLE-SLOW-FIXES,
+INPUT_STARTUP-TIMEOUT-SECONDS) reaches the spawned Node process as empty, breaking
+`core.getInput()` for every required input.
+
+candidate_fixes (require Phase 01.2 gap-closure plan):
+1. Replace `npx tsx src/index.ts` with `./node_modules/.bin/tsx src/index.ts` to bypass npx's spawn behavior.
+2. Replace tsx entirely — compile to JS at build time and invoke `node dist/index.js`.
+3. Bridge env vars in a bash preamble that reads from /proc/self/environ (since bash itself can't reference hyphenated names) and re-exports under underscored names. Requires also patching @actions/core call sites to use the new names.
+
+Recommendation: option (1) is the smallest blast-radius fix; option (2) is the proper Phase 6 release shape (no runtime tsx).
 
 ### 2. No zombie processes after startup timeout / clean app PID cleanup
 
@@ -41,8 +77,26 @@ result: [pending]
 total: 2
 passed: 0
 issues: 0
-pending: 2
+pending: 1
 skipped: 0
-blocked: 0
+blocked: 1
 
 ## Gaps
+
+### G-01 — npx tsx strips hyphenated env vars (blocks SC-1 + SC-3 verification)
+
+severity: high
+phase_origin: 01-security-scaffold-composite-packaging
+detected_via: SC-1 live verification on Sacharified/playwright-healer-test run 25009578022
+description: action.yml Step 6 invokes the action's runtime via `npx tsx src/index.ts`.
+  The npx-tsx-node spawn chain drops env vars with hyphens in their names (verified
+  empirically: `node -e ...` preserves them, `npx tsx -e ...` does not). Every
+  hyphenated INPUT_* env var arrives at the Node process as empty string, breaking
+  every `core.getInput()` call for those inputs. This blocks any heal/dry-run/ingest
+  invocation in real CI — the action exits at startup with "Input required and not
+  supplied: healer-token".
+recommended_remediation: Replace `npx tsx src/index.ts` with `./node_modules/.bin/tsx src/index.ts`
+  in action.yml Step 6 (and the Step 5 `wait-for-ready.ts` invocation, same shape).
+  Add a regression test step in phase1-self-test.yml that asserts a hyphenated
+  INPUT_* var survives `npx tsx`-style spawn.
+followup: Phase 01.2 gap closure plan needed before SC-1 / SC-3 can be re-attempted.
