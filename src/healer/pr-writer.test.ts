@@ -3,10 +3,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const mockPullsCreate = vi.fn();
 
 vi.mock('@octokit/rest', () => ({
-  Octokit: vi.fn().mockImplementation(() => ({
-    pulls: { create: mockPullsCreate },
-    issues: { create: vi.fn() },
-  })),
+  Octokit: vi.fn().mockImplementation(function () {
+    return {
+      pulls: { create: mockPullsCreate },
+      issues: { create: vi.fn() },
+    };
+  }),
 }));
 
 vi.mock('@actions/core', () => ({
