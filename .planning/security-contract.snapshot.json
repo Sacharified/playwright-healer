@@ -11,5 +11,6 @@
   ],
   "forbiddenWorkflowTriggers": [
     "pull_request_target"
-  ]
+  ],
+  "mcpPlaywrightToolPrefix": "browser_"
 }

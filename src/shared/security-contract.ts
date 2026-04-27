@@ -31,6 +31,13 @@ export const ALLOWED_TOOLS = Object.freeze([
 export const ALLOWED_ORIGIN_TEMPLATE = (baseUrl: string): readonly string[] =>
   Object.freeze([baseUrl, 'http://localhost:*']);
 
+// MCP_PLAYWRIGHT_TOOL_PREFIX is the raw tool name prefix that Playwright MCP uses for all
+// its browser tools (e.g., 'browser_navigate', 'browser_click'). The audit invariant in
+// gemini.ts uses this constant to discriminate genuine Playwright tools from any hypothetical
+// rogue tool that would also match the broader 'mcp__playwright__*' canonical glob after prefixing.
+// D-13: inline literals of MCP tool name patterns are banned outside this file.
+export const MCP_PLAYWRIGHT_TOOL_PREFIX = 'browser_' as const;
+
 export const FORBIDDEN_WORKFLOW_TRIGGERS = Object.freeze([
   'pull_request_target',
 ] as const);
