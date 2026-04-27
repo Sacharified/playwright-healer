@@ -155,6 +155,7 @@ async function runDryRun(config: Config): Promise<void> {
   md += '\n_No side effects were performed. Exit code: 0._\n';
 
   await core.summary.addRaw(md).write();
+  core.setOutput('dryRunSummary', md);
 }
 
 main().catch((err) => {
