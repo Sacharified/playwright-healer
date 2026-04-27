@@ -57,6 +57,7 @@ vi.mock('@actions/core', () => ({
   setFailed: (msg: string) => mockSetFailed(msg),
   warning: vi.fn(),
   info: vi.fn(),
+  error: vi.fn(),
   summary: { addRaw: vi.fn().mockReturnThis(), write: vi.fn().mockResolvedValue(undefined) },
 }));
 
@@ -238,22 +239,30 @@ describe('run() — HEA-06 inner cleanup', () => {
   it('calls supervisorStop when adapter throws unexpectedly', async () => {
     mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
     mockRunAgent.mockRejectedValueOnce(new Error('network meltdown'));
-    await expect(run(baseConfig)).rejects.toThrow();
+    await run(baseConfig);  // run() no longer throws — outer catch handles it
     expect(mockSupervisorStop).toHaveBeenCalled();
+    expect(mockSetFailed).toHaveBeenCalledWith('network meltdown');
   });
 });
 
 describe('run() — provider switch (D-01)', () => {
-  it('config.provider=anthropic → stub error propagates (not an issue route)', async () => {
+  it('config.provider=anthropic → stub error routes to no-fix-proposable issue (HI-03)', async () => {
     mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
-    await expect(run({ ...baseConfig, provider: 'anthropic' })).rejects.toThrow(/anthropic adapter not implemented/);
-    expect(mockOpenIssue).not.toHaveBeenCalled();
+    await run({ ...baseConfig, provider: 'anthropic' });  // no longer throws
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'no-fix-proposable',
+    }));
+    expect(mockSetFailed).toHaveBeenCalledWith(expect.stringMatching(/anthropic adapter not implemented/));
     expect(mockOpenPr).not.toHaveBeenCalled();
   });
 
-  it('config.provider=ollama → stub error propagates', async () => {
+  it('config.provider=ollama → stub error routes to no-fix-proposable issue (HI-03)', async () => {
     mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
-    await expect(run({ ...baseConfig, provider: 'ollama' })).rejects.toThrow(/ollama adapter not implemented/);
+    await run({ ...baseConfig, provider: 'ollama' });  // no longer throws
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'no-fix-proposable',
+    }));
+    expect(mockSetFailed).toHaveBeenCalledWith(expect.stringMatching(/ollama adapter not implemented/));
   });
 
   it('config.provider=gemini → createGeminiAdapter is called with config values', async () => {

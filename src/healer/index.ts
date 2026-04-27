@@ -20,6 +20,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import type { Config } from '../shared/config.js';
 import { DEFAULT_MODELS } from '../shared/config.js';
+import { ALLOWED_TOOLS } from '../shared/security-contract.js';
 import { DispatchPayload } from './dispatch-payload.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from './adapter.js';
 import type { FailureMode } from './types.js';
@@ -124,7 +125,7 @@ export async function run(config: Config): Promise<void> {
     });
 
     // ── Step 4: PRI-05 sanity rerun (deterministic-failure detection) ────
-    const sanity = await validate(payload.testFile, payload.testTitle, config.rerunCount);
+    const sanity = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
     if (sanity.passRate === 0) {
       await fileIssue({
         config, owner, repo,
@@ -153,7 +154,7 @@ export async function run(config: Config): Promise<void> {
     let proposal!: FixProposal | NoFixProposable;
     let stats!: AgentRunStats;
     try {
-      const result = await adapter.runAgent(context, systemPrompt, []);
+      const result = await adapter.runAgent(context, systemPrompt, ALLOWED_TOOLS);
       proposal = result.proposal;
       stats = result.stats;
     } catch (err) {
@@ -217,7 +218,7 @@ export async function run(config: Config): Promise<void> {
     });
 
     // ── Step 10: Validate the fix (VAL-01 / VAL-02 / VAL-03) ────────────
-    const validation = await validate(payload.testFile, payload.testTitle, config.rerunCount);
+    const validation = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
     if (validation.passRate < config.rerunPassRate) {
       await fileIssue({
         config, owner, repo,
@@ -249,6 +250,33 @@ export async function run(config: Config): Promise<void> {
       triggeringRunUrl,
       traceLink: null,
     });
+  } catch (err) {
+    // BudgetExhausted is caught at Step 6 (inner catch) and handled there.
+    // Any other error reaching here is an unexpected pipeline failure.
+    // Per D-09 "no silent failures": file a GitHub issue so the consumer
+    // has a GitHub artifact to act on (no human should read action logs).
+    // 'no-fix-proposable' is the closest available D-09 token for unexpected errors
+    // (D-09 locks six tokens; an 'unexpected-error' seventh is not in the list).
+    const msg = err instanceof Error ? err.message : String(err);
+    core.error(`Unexpected healer pipeline error: ${msg}`);
+    try {
+      await fileIssue({
+        config,
+        owner,
+        repo,
+        testTitle: payload.testTitle,
+        triggeringRunUrl,
+        failureMode: 'no-fix-proposable',
+        rootCause: `Unexpected pipeline error: ${msg.slice(0, 1000)}`,
+        reproSteps: 'Check the action run log for the full stack trace.',
+        suggestedManualFix:
+          'Inspect the error message above and file a bug against playwright-healer if it is reproducible.',
+      });
+    } catch (issueErr) {
+      // If issue filing itself fails, log and continue — core.setFailed below is the gate.
+      core.warning(`Failed to file pipeline-error issue: ${issueErr instanceof Error ? issueErr.message : String(issueErr)}`);
+    }
+    core.setFailed(msg);
   } finally {
     // ── HEA-06 inner cleanup (D-12 layer 1) ─────────────────────────────
     try { supervisorStop(); } catch { /* swallow — outer pkill is the safety net */ }
