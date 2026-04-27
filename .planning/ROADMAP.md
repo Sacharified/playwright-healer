@@ -61,7 +61,10 @@ Plans:
   2. **Scenario 1 canary-mask test** fails when (and only when) the canary actually leaks past the runner masker. The current TWO-JOB pattern relies on `core.setSecret()` masking literal `with: api-key:` values that the runner emits in the step header BEFORE any action code runs — structurally impossible. Either: (a) add a setup step in Job A that runs `echo "::add-mask::<canary>"` before `uses: ./` (clearly verifies runner masker only, not `core.setSecret`), or (b) drop the literal canary in `with:` in favour of an action-emitted canary printed AFTER setSecret (verifies the dispatcher's masking contract). Pick one and document the trade-off.
   3. All six scenarios green on a single ubuntu-latest run on a clean fork (no repo secrets required, in line with Pitfall 8 / D-08 from Phase 01.1). The new `self-test-hyphenated-input-env` regression job (Phase 01.2) remains green and untouched. Phase 1's TWO-JOB pattern preference (Pitfall 9 / Pattern 13) is honoured.
   4. The change is purely test/test-helper-side. `src/index.ts` may grow a `core.setOutput('dryRunSummary', md)` call in `runDryRun` (no behaviour change for production users; output is opt-in to consume), but otherwise no production-code behaviour changes. No new threat surface (`HEALER_TEST_MODE` style flags or test-only branches are explicitly out of scope to avoid runtime/test divergence).
-**Plans**: TBD (planning step pending)
+**Plans**: 1 plan
+
+Plans:
+- [ ] 01.3-01-PLAN.md — runDryRun setOutput + action.yml outputs.dry-run-summary + Scenario 1 ::add-mask:: + Scenarios 4/5 env-indirection + 2 new vitest tests + live-CI gate (TEST-01)
 
 ### Phase 1.1: Multi-Provider Input Surface (INSERTED)
 **Goal**: The action's input surface is provider-agnostic — the same `api-key` input is consumed by Anthropic, Gemini, and Ollama adapters (adapters land in Phase 3). Empty `api-key` is allowed when `provider=ollama` so users can point at a local Ollama instance without auth.
