@@ -92,13 +92,18 @@ async function runAgentImpl(
 
   try {
     // 3. AUDIT INVARIANT (SEC-04 / D-03 — supersedes any "translation" framing)
-    // Every tool returned by listTools() must map to a glob in ALLOWED_TOOLS
-    // after applying the canonical mcp__playwright__ prefix. Throws BEFORE
-    // any generateContent call if any tool is uncovered.
+    // Every tool returned by listTools() must satisfy two conditions:
+    //   (a) Its canonical form (mcp__playwright__<name>) is covered by a glob in ALLOWED_TOOLS.
+    //   (b) Its raw name matches the Playwright MCP browser_* convention — this is the
+    //       discriminant between genuine Playwright tools and rogue tools (e.g., filesystem_write)
+    //       that would also satisfy the broader mcp__playwright__* glob after prefixing.
+    // Both checks must pass. Throws BEFORE any generateContent call if either fails.
     const toolList = await mcpClient.listTools();
     for (const tool of toolList.tools) {
       const canonical = `mcp__playwright__${tool.name}`;
-      const covered = ALLOWED_TOOLS.some((p) => globMatch(p, canonical));
+      const covered =
+        ALLOWED_TOOLS.some((p) => globMatch(p, canonical)) &&
+        globMatch('browser_*', tool.name);
       if (!covered) {
         throw new Error(
           `Audit failed: MCP tool '${tool.name}' (canonical '${canonical}') is not covered by ALLOWED_TOOLS`,
