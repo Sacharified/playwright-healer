@@ -4,13 +4,13 @@ milestone: v0.1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-04-27T12:36:00.438Z"
+last_updated: "2026-04-27T18:05:40.312Z"
 last_activity: 2026-04-27 -- Phase 03 execution started
 progress:
-  total_phases: 7
-  completed_phases: 2
-  total_plans: 28
-  completed_plans: 28
+  total_phases: 8
+  completed_phases: 3
+  total_plans: 29
+  completed_plans: 30
   percent: 100
 ---
 
@@ -95,6 +95,11 @@ None yet.
 
 - **Phase 1 gate:** Native SDK binary discovery (`npm ci --production` installing `@anthropic-ai/claude-agent-sdk-linux-x64` on ubuntu-latest) is unverified — must smoke-test before agent code is written
 - **Phase 3 gate:** Agent system prompt structure for four-stage CI remediation loop has no established template — budget iteration time
+- **Phase 03 SC-1/SC-3 blocked:** Live verification of PR-creation-with-CI and zombie-cleanup is blocked by Phase 01 npx-tsx env-var stripping bug (recorded as 03-HUMAN-UAT.md G-01). Resolved by inserted Phase 01.2.
+
+### Roadmap Evolution
+
+- Phase 01.2 inserted after Phase 01: Fix npx tsx env-var stripping in composite action runtime (URGENT) — discovered during SC-1 live verification on 2026-04-27. action.yml Step 6 invokes the agent via `npx tsx src/index.ts`; the npx → tsx → node spawn chain drops env vars whose names contain hyphens (every `INPUT_*` for kebab-cased inputs), so `core.getInput('healer-token')` throws on every real CI invocation. Pre-existing — `phase1-self-test.yml` has been failing with this symptom since 2026-04-25; unit tests miss it because they mock `@actions/core` directly.
 
 ## Deferred Items
 
@@ -112,4 +117,4 @@ Last session: --stopped-at
 Stopped at: Phase 3 context gathered
 Resume file: --resume-file
 
-**Planned Phase:** 03 (manual-healer-selectors-waits-issue-fallback) — 15 plans — 2026-04-27T11:36:30.375Z
+**Planned Phase:** 01.2 (Fix npx tsx env-var stripping in composite action runtime (INSERTED)) — 1 plans — 2026-04-27T18:05:40.306Z
