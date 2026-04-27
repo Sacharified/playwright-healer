@@ -24,6 +24,16 @@ export default defineConfig({
           passWithNoTests: true,
         },
       },
+      {
+        test: {
+          name: 'src',
+          include: ['src/**/*.test.ts'],
+          pool: 'threads',
+          environment: 'node',
+          testTimeout: 15000,
+          passWithNoTests: true,
+        },
+      },
     ],
   },
 });
