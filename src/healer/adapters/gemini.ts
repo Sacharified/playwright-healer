@@ -25,7 +25,7 @@ import { GoogleGenAI, mcpToTool } from '@google/genai';
 import type { Content, Part } from '@google/genai';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { ALLOWED_TOOLS, ALLOWED_ORIGIN_TEMPLATE } from '../../shared/security-contract.js';
+import { ALLOWED_TOOLS, ALLOWED_ORIGIN_TEMPLATE, MCP_PLAYWRIGHT_TOOL_PREFIX } from '../../shared/security-contract.js';
 import { BudgetTracker, BudgetExhausted } from '../budget.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from '../adapter.js';
 import type { ContextBundle } from '../types.js';
@@ -103,7 +103,7 @@ async function runAgentImpl(
       const canonical = `mcp__playwright__${tool.name}`;
       const covered =
         ALLOWED_TOOLS.some((p) => globMatch(p, canonical)) &&
-        globMatch('browser_*', tool.name);
+        tool.name.startsWith(MCP_PLAYWRIGHT_TOOL_PREFIX);
       if (!covered) {
         throw new Error(
           `Audit failed: MCP tool '${tool.name}' (canonical '${canonical}') is not covered by ALLOWED_TOOLS`,
@@ -114,13 +114,16 @@ async function runAgentImpl(
     // 4. Initialize Gemini client
     const ai = new GoogleGenAICtor({ apiKey: opts.apiKey });
 
-    // 5. Build initial contents — system prompt + user-side context bundle
+    // 5. Build initial contents — context bundle only (systemPrompt goes to systemInstruction)
     const contextSummary = renderContextForAgent(context);
-    const initialUserText = `${systemPrompt}\n\n---\n\n${contextSummary}`;
+    const contents: Content[] = [{ role: 'user', parts: [{ text: contextSummary } as Part] }];
 
-    const contents: Content[] = [{ role: 'user', parts: [{ text: initialUserText } as Part] }];
+    // 6. Initialize MCP callable once — mcpToTool is a one-time setup per @google/genai docs.
+    // Calling it inside the loop re-initializes transport side effects on every turn.
+    const mcpCallable = mcpToToolFn(mcpClient);
+    await mcpCallable.tool(); // one-time initialize side-effect (RESEARCH §Pattern 1)
 
-    // 6. Manual tool-use loop (FIX-02)
+    // 7. Manual tool-use loop (FIX-02)
     // BudgetTracker.assertCanProceed() is the pre-call gate.
     // BudgetTracker.recordUsage() accounts tokens after each successful response.
     while (true) {
@@ -130,7 +133,8 @@ async function runAgentImpl(
         model: opts.model,
         contents,
         config: {
-          tools: [mcpToToolFn(mcpClient)],
+          systemInstruction: systemPrompt,            // system role — isolated from user content
+          tools: [mcpCallable],
           automaticFunctionCalling: { disable: true },
         },
       });
@@ -149,9 +153,7 @@ async function runAgentImpl(
       }
 
       // Execute the tool calls via the MCP callable
-      const callable = mcpToToolFn(mcpClient);
-      await callable.tool(); // ensures initialize side-effect (RESEARCH §Pattern 1)
-      const responseParts = await callable.callTool(functionCalls);
+      const responseParts = await mcpCallable.callTool(functionCalls);
 
       contents.push({
         role: 'model',
