@@ -14,7 +14,12 @@ export const FORBIDDEN_PATCHED_LINE_PATTERNS = Object.freeze([
   { name: 'nth-child',      re: /:nth-child\s*\(/ },
   { name: 'nth-of-type',    re: /:nth-of-type\s*\(/ },
   { name: 'xpath-equals',   re: /xpath\s*=/ },
-  { name: 'xpath-prefix',   re: /^\s*\/\//m },
+  // Matches // only when it appears as the start of a string literal argument to a
+  // Playwright selector call. This avoids false-positives on TypeScript // comments
+  // while still catching page.locator('//div'), waitForSelector('//button'), getByText('//...').
+  // The locator-anchored form is chosen over bare /['"`]\/\// to avoid firing on
+  // page.goto('//cdn.example.com') and similar URL patterns. (D-16 / HI-02)
+  { name: 'xpath-prefix',   re: /(?:locator|waitForSelector|getBy\w+)\s*\(\s*['"`]\/\// },
 ] as const);
 
 export const ASSERTION_WEAKENING_PAIRS = Object.freeze([

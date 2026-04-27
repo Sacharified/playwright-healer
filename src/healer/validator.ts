@@ -40,6 +40,7 @@ export async function validate(
   testFile: string,
   testTitle: string,
   rerunCount: number,
+  cwd?: string,
 ): Promise<ValidationResult> {
   const grepEscaped = escapeForGrep(testTitle);
   const perRun: RunResult[] = [];
@@ -62,6 +63,7 @@ export async function validate(
       ],
       {
         ignoreReturnCode: true,
+        cwd,
         env: {
           ...process.env,
           PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,

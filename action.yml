@@ -153,7 +153,8 @@ runs:
     - name: Spawn start-command + wait for ready (heal mode)
       if: inputs.mode == 'heal' && inputs.start-command != ''
       shell: bash
-      working-directory: ${{ github.action_path }}
+      # No working-directory — composite default is github.workspace (consumer checkout).
+      # start-command (e.g. npm run dev) runs from the consumer repo, not the action dir.
       env:
         BASE_URL: ${{ inputs.base-url }}
         STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup-timeout-seconds }}
@@ -163,9 +164,9 @@ runs:
         TEST_TITLE: ${{ github.event.inputs.testTitle }}
         TRIGGERING_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        bash -c "${{ inputs.start-command }}" &
+        bash -c "exec ${{ inputs.start-command }}" &
         echo $! > /tmp/playwright-healer-app-pid
-        npx tsx src/healer/wait-for-ready.ts
+        npx tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
 
     # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
     - name: Run playwright-healer
