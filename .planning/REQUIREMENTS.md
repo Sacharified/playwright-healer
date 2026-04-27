@@ -123,6 +123,10 @@
 - [ ] **DOC-04**: README documents the required token scopes and the exact reason `GITHUB_TOKEN` alone doesn't work (citing GitHub's recursion guard)
 - [ ] **DOC-05**: The repo includes a CHANGELOG and a `SECURITY.md` with a vulnerability reporting process
 
+### Test Hygiene (TEST)
+
+- [ ] **TEST-01**: `phase1-self-test.yml` runs end-to-end green on a fresh `ubuntu-latest` runner with no pre-existing test-design bugs — every scenario's assertion mechanism matches GitHub Actions' actual semantics (e.g., no reliance on per-step `$GITHUB_STEP_SUMMARY` for cross-step assertions; canary-mask tests pre-register the canary with the runner masker before the step header is emitted)
+
 ---
 
 ## v2 Requirements
@@ -246,13 +250,14 @@ Explicitly excluded. Documented so they don't creep back in.
 | DOC-03 | Phase 6 | Pending |
 | DOC-04 | Phase 6 | Pending |
 | DOC-05 | Phase 6 | Pending |
+| TEST-01 | Phase 01.3 | Pending |
 
 **Coverage:**
-- v1 requirements: **69** total (across 12 categories)
-- Mapped to phases: **69** (100%)
+- v1 requirements: **70** total (across 13 categories)
+- Mapped to phases: **70** (100%)
 - Unmapped: **0**
 
-Note: The metadata block previously stated "67 total (across 11 categories)" — the actual count is 69 across 12 categories (PKG, CFG, ING, STA, DET, SEC, HEA, FIX, VAL, PRI, MRG, DOC). Discrepancy resolved by direct count.
+Note: The metadata block previously stated "67 total (across 11 categories)" — the actual count is now 70 across 13 categories (PKG, CFG, ING, STA, DET, SEC, HEA, FIX, VAL, PRI, MRG, DOC, TEST). The TEST category was added in Phase 01.3 to track CI test-design correctness invariants surfaced when prior phases unmasked latent test-design bugs.
 
 ---
 
