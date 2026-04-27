@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: executing
+status: ready_to_plan
 stopped_at: Completed 01.2-01-PLAN.md
 last_updated: "2026-04-27T18:54:46.088Z"
 last_activity: 2026-04-27 -- Phase --phase execution started
 progress:
   total_phases: 8
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 29
   completed_plans: 31
-  percent: 100
+  percent: 63
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-25)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 01.2 complete locally (live ubuntu-latest verification pending push); next: Phase 03 SC-1/SC-3 re-attempt
+**Current focus:** Phase 01.2 verified complete (Scenario 6 green on ubuntu-latest 2026-04-27 → env-var stripping fixed; Phase 03 G-01 closed). Next: file Phase 01.3 to fix three pre-existing test-design bugs in phase1-self-test.yml unmasked by the 01.2 spawn change, then resume Phase 03 SC-1/SC-3 live re-attempt.
 
 ## Current Position
 
-Phase: 01.2 — COMPLETE (locally; live verification pending push)
-Plan: 1 of 1 complete
-Status: Phase 01.2 P01 fix landed; awaiting first push to trigger phase1-self-test.yml on ubuntu-latest with all six jobs green
-Last activity: 2026-04-27 — Phase 01.2 P01 executed (path-resolved tsx fix + regression-test job)
+Phase: 03 (resuming) — pending Phase 01.3 (test-design fixes) for clean self-test signal
+Plan: Phase 01.3 to be planned; Phase 03 SC-1/SC-3 re-attempt to follow
+Status: Phase 01.2 complete; awaiting Phase 01.3 plan
+Last activity: 2026-04-27 -- Phase 01.2 verification resolved (passed)
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -45,6 +45,7 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 02 | 7 | - | - |
+| 01.2 | 1 | - | - |
 
 **Recent Trend:**
 
@@ -98,7 +99,8 @@ None yet.
 
 - **Phase 1 gate:** Native SDK binary discovery (`npm ci --production` installing `@anthropic-ai/claude-agent-sdk-linux-x64` on ubuntu-latest) is unverified — must smoke-test before agent code is written
 - **Phase 3 gate:** Agent system prompt structure for four-stage CI remediation loop has no established template — budget iteration time
-- **Phase 03 SC-1/SC-3 unblock signal pending:** Phase 01.2 P01 fix landed locally (commits c0c2f21 + a37df83); empirical-validation gate exit_code=0 on darwin. Live `phase1-self-test.yml` run on ubuntu-latest must show all six jobs green (including new `self-test-hyphenated-input-env`) before 03-HUMAN-UAT.md G-01 can be closed and Phase 03 SC-1/SC-3 re-attempted.
+- **Phase 03 SC-1/SC-3 env-var blocker — RESOLVED 2026-04-27:** Live ubuntu-latest run confirmed `./node_modules/.bin/tsx` preserves hyphenated INPUT_*. Scenario 6 green; Scenario 1 Job A green; Scenario 4 dispatcher writes summary correctly (visible in UI). 03-HUMAN-UAT.md G-01 marked resolved.
+- **Phase 01.3 needed before clean phase1-self-test.yml signal:** Three pre-existing test-design bugs were unmasked by 01.2's fix (action now runs end-to-end so latent assertion bugs surface). They do NOT block Phase 03 re-attempt — they affect masking-assertion correctness in Scenario 1 Job B and dry-run summary assertions in Scenarios 4+5, none in Phase 03's path. See `.planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md` "Scope clarification" section for details.
 
 ### Roadmap Evolution
 

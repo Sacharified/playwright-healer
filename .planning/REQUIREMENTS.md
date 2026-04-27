@@ -177,13 +177,13 @@ Explicitly excluded. Documented so they don't creep back in.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PKG-01 | Phase 1 | Pending |
-| PKG-02 | Phase 1 | Pending |
+| PKG-01 | Phase 1 | Complete |
+| PKG-02 | Phase 1 | Complete |
 | PKG-03 | Phase 6 | Pending |
 | PKG-04 | Phase 6 | Pending |
 | PKG-05 | Phase 6 | Pending |
 | CFG-01 | Phase 1 | Pending |
-| CFG-02 | Phase 1 | Pending |
+| CFG-02 | Phase 1 | Complete |
 | CFG-03 | Phase 2 | Complete |
 | CFG-04 | Phase 3 | Pending |
 | CFG-05 | Phase 1 | Pending |

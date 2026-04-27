@@ -123,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-25 — Phase 02 complete (ingest pipeline + state-branch git-as-DB + log-only detection landed; 17 REQ-IDs satisfied; consumer-facing example workflow + real-world SC#1 evidence still pending Phase 06)*
+*Last updated: 2026-04-27 — Phase 01.2 complete (path-resolved tsx replaces npx tsx at action.yml Steps 5+6; hyphenated `INPUT_*` env vars verified surviving spawn on ubuntu-latest via new `self-test-hyphenated-input-env` regression job; Phase 03 G-01 closed). Phase 01.3 filed for three pre-existing `phase1-self-test.yml` test-design bugs unmasked by the spawn fix. Phase 02 complete since 2026-04-25.*
