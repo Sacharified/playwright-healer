@@ -120,6 +120,17 @@ inputs:
     required: false
     default: '120'
 
+outputs:
+  dry-run-summary:
+    description: |
+      Rendered redacted dry-run markdown summary. Populated only when mode=dry-run.
+      Self-redacted via core.setSecret on api-key/healer-token/github-token before
+      emission — safe to log. Empty for ingest/heal modes.
+
+      Diagnostic / test-only — content not stable across versions. Do not parse from
+      consumer workflows for production decisions.
+    value: ${{ steps.run-playwright-healer.outputs.dryRunSummary }}
+
 runs:
   using: composite
   steps:
@@ -170,6 +181,7 @@ runs:
 
     # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
     - name: Run playwright-healer
+      id: run-playwright-healer
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
