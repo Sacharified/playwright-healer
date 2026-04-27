@@ -155,6 +155,119 @@ describe('loadYamlConfig', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// getInputSchema — CFG-04 fix-class toggles + startupTimeoutSeconds
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('getInputSchema — CFG-04 toggles + startupTimeoutSeconds', () => {
+  const BASE_REQUIRED = {
+    mode: 'heal',
+    healerToken: 'tok',
+    githubToken: 'ghp',
+    provider: 'ollama', // ollama skips apiKey requirement
+  };
+
+  it('defaults: all four toggles = true when inputs are empty string', () => {
+    const result = getInputSchema().safeParse(BASE_REQUIRED);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSelectorFixes).toBe(true);
+      expect(result.data.enableWaitFixes).toBe(true);
+      expect(result.data.enableAssertionFixes).toBe(true);
+      expect(result.data.enableSlowFixes).toBe(true);
+    }
+  });
+
+  it('defaults: startupTimeoutSeconds = 120', () => {
+    const result = getInputSchema().safeParse(BASE_REQUIRED);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.startupTimeoutSeconds).toBe(120);
+    }
+  });
+
+  it('enableSelectorFixes accepts string "true" -> true', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      enableSelectorFixes: 'true',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSelectorFixes).toBe(true);
+    }
+  });
+
+  it('enableSelectorFixes accepts string "false" -> false', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      enableSelectorFixes: 'false',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSelectorFixes).toBe(false);
+    }
+  });
+
+  it('all four toggles parse independently', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      enableSelectorFixes: 'false',
+      enableWaitFixes: 'true',
+      enableAssertionFixes: 'false',
+      enableSlowFixes: 'true',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.enableSelectorFixes).toBe(false);
+      expect(result.data.enableWaitFixes).toBe(true);
+      expect(result.data.enableAssertionFixes).toBe(false);
+      expect(result.data.enableSlowFixes).toBe(true);
+    }
+  });
+
+  it('startupTimeoutSeconds accepts string "60" -> 60', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      startupTimeoutSeconds: '60',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.startupTimeoutSeconds).toBe(60);
+    }
+  });
+
+  it('startupTimeoutSeconds defaults to 120 when empty', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      startupTimeoutSeconds: '',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.startupTimeoutSeconds).toBe(120);
+    }
+  });
+
+  it('startupTimeoutSeconds: "banana" produces a Zod error with path startupTimeoutSeconds', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      startupTimeoutSeconds: 'banana',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fieldNames = result.error.issues.map((i) => i.path.join('.'));
+      expect(fieldNames.some((n) => n.includes('startupTimeoutSeconds'))).toBe(true);
+    }
+  });
+
+  it('startupTimeoutSeconds: "0" produces a Zod error (min 1)', () => {
+    const result = getInputSchema().safeParse({
+      ...BASE_REQUIRED,
+      startupTimeoutSeconds: '0',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // mergeConfigs
 // ────────────────────────────────────────────────────────────────────────────
 

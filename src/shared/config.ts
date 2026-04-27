@@ -70,6 +70,25 @@ export function getInputSchema() {
                               .refine((v) => !isNaN(v), { message: 'max-heals-per-test-per-week must be a valid integer' })
                               .int().min(0).default(3),
     stateBranchName:        z.string().default('playwright-healer-state'),
+
+    // ── CFG-04: Per-fix-class toggles (Phase 3 ships selectors+waits; assertions+slow toggle-only) ──
+    // Note: z.coerce.boolean() does NOT work for env strings — Boolean('false') === true.
+    // Using transform: v !== 'false' so 'false' → false, 'true'/'1'/anything-else → true.
+    // .default(true) — each toggle defaults to true when the INPUT_* env var is absent.
+    enableSelectorFixes:  z.string().default('true').transform(v => v !== 'false'),
+    enableWaitFixes:      z.string().default('true').transform(v => v !== 'false'),
+    enableAssertionFixes: z.string().default('true').transform(v => v !== 'false'),
+    enableSlowFixes:      z.string().default('true').transform(v => v !== 'false'),
+
+    // ── HEA-02 (D-15): App-supervisor readiness probe ceiling ──
+    // z.preprocess converts empty string ("") to undefined so .default(120) kicks in.
+    // Non-empty strings flow through z.coerce.number() — "banana" → NaN → refine fails.
+    startupTimeoutSeconds: z.preprocess(
+                              (v) => (v === '' ? undefined : v),
+                              z.coerce.number()
+                                .refine((v) => !isNaN(v), { message: 'startup-timeout-seconds must be a valid integer' })
+                                .int().min(1).default(120)
+                            ),
   }).superRefine((v, ctx) => {
     if (v.provider !== 'ollama' && v.apiKey.length === 0) {
       ctx.addIssue({
