@@ -125,7 +125,8 @@
 
 ### Test Hygiene (TEST)
 
-- [ ] **TEST-01**: `phase1-self-test.yml` runs end-to-end green on a fresh `ubuntu-latest` runner with no pre-existing test-design bugs — every scenario's assertion mechanism matches GitHub Actions' actual semantics (e.g., no reliance on per-step `$GITHUB_STEP_SUMMARY` for cross-step assertions; canary-mask tests pre-register the canary with the runner masker before the step header is emitted)
+- [ ] **TEST-01
+**: `phase1-self-test.yml` runs end-to-end green on a fresh `ubuntu-latest` runner with no pre-existing test-design bugs — every scenario's assertion mechanism matches GitHub Actions' actual semantics (e.g., no reliance on per-step `$GITHUB_STEP_SUMMARY` for cross-step assertions; canary-mask tests pre-register the canary with the runner masker before the step header is emitted)
 
 ---
 

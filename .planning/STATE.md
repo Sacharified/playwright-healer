@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Completed 01.2-01-PLAN.md
-last_updated: "2026-04-27T18:54:46.088Z"
-last_activity: 2026-04-27 -- Phase --phase execution started
+status: verifying
+stopped_at: "Completed 01.3-01-PLAN.md (partial — verify-log-mask Job B failed; SC#1 complete, SC#2 blocked)"
+last_updated: "2026-04-27T22:04:31.371Z"
+last_activity: 2026-04-27
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 5
-  total_plans: 29
-  completed_plans: 31
-  percent: 63
+  total_plans: 30
+  completed_plans: 32
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-25)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 01.2 verified complete (Scenario 6 green on ubuntu-latest 2026-04-27 → env-var stripping fixed; Phase 03 G-01 closed). Next: file Phase 01.3 to fix three pre-existing test-design bugs in phase1-self-test.yml unmasked by the 01.2 spawn change, then resume Phase 03 SC-1/SC-3 live re-attempt.
+**Current focus:** Phase 01.3 — fix-pre-existing-phase1-self-test-yml-test-design-bugs-inser
 
 ## Current Position
 
-Phase: 03 (resuming) — pending Phase 01.3 (test-design fixes) for clean self-test signal
-Plan: Phase 01.3 to be planned; Phase 03 SC-1/SC-3 re-attempt to follow
-Status: Phase 01.2 complete; awaiting Phase 01.3 plan
-Last activity: 2026-04-27 -- Phase 01.2 verification resolved (passed)
+Phase: 01.3 (fix-pre-existing-phase1-self-test-yml-test-design-bugs-inser) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-04-27
 
 Progress: [██████████] 100%
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100%
 | Phase 01-security-scaffold-composite-packaging P05 | 4m | 2 tasks | 2 files |
 | Phase 01-security-scaffold-composite-packaging P06 | 5m | 1 tasks | 1 files |
 | Phase 01.2 P01 | 3min | 3 tasks | 2 files |
+| Phase 01.3 P01 | 15min | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - Scenario 4 hard-fails on empty GITHUB_STEP_SUMMARY — runDryRun writes summary unconditionally; empty file is a helper regression indicator, not a benign environment quirk
 - Phase 01.2 P01: ./node_modules/.bin/tsx (path-resolved) replaces npx tsx at action.yml Steps 5 + 6 — empirical local gate exit_code=0; live ubuntu-latest verification pending push
 - Regression-test job self-test-hyphenated-input-env added to phase1-self-test.yml as isolated Scenario 6 — does not invoke 'uses: ./' to avoid Zod superRefine noise; failure points directly at the spawn line
+- SC#2 option (a) design bug discovered: echo ::add-mask::CANARY in run: block leaks literal in runner command-echo before masking takes effect; verify-log-mask Job B fails; user decision required on fix approach
+- SC#1 fixed: composite-action output bridge (core.setOutput dryRunSummary + action.yml outputs.dry-run-summary) works end-to-end; Scenarios 4+5 green on ubuntu-latest
 
 ### Pending Todos
 
@@ -100,7 +103,8 @@ None yet.
 - **Phase 1 gate:** Native SDK binary discovery (`npm ci --production` installing `@anthropic-ai/claude-agent-sdk-linux-x64` on ubuntu-latest) is unverified — must smoke-test before agent code is written
 - **Phase 3 gate:** Agent system prompt structure for four-stage CI remediation loop has no established template — budget iteration time
 - **Phase 03 SC-1/SC-3 env-var blocker — RESOLVED 2026-04-27:** Live ubuntu-latest run confirmed `./node_modules/.bin/tsx` preserves hyphenated INPUT_*. Scenario 6 green; Scenario 1 Job A green; Scenario 4 dispatcher writes summary correctly (visible in UI). 03-HUMAN-UAT.md G-01 marked resolved.
-- **Phase 01.3 needed before clean phase1-self-test.yml signal:** Three pre-existing test-design bugs were unmasked by 01.2's fix (action now runs end-to-end so latent assertion bugs surface). They do NOT block Phase 03 re-attempt — they affect masking-assertion correctness in Scenario 1 Job B and dry-run summary assertions in Scenarios 4+5, none in Phase 03's path. See `.planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md` "Scope clarification" section for details.
+- **Phase 01.3 needed before clean phase1-self-test.yml signal:** Three pre-existing test-design bugs were unmasked by 01.2's fix (action now runs end-to-end so latent assertion bugs surface). They do NOT block Phase 03 re-attempt — they affect masking-assertion correctness in Scenario 1 Job B and dry-run summary assertions in Scenarios 4+5, in Phase 03's path. See `.planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md` "Scope clarification" section for details.
+- Phase 01.3 SC#2: verify-log-mask Job B fails because echo ::add-mask::LITERAL in run: block exposes literal in runner command-echo log before masking takes effect. User must choose fix option (A/B/C/D) from 01.3-01-SUMMARY.md Failure Diagnosis. Run: https://github.com/Sacharified/playwright-healer/actions/runs/25021785350
 
 ### Roadmap Evolution
 
@@ -118,8 +122,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-27T18:54:38.625Z
-Stopped at: Completed 01.2-01-PLAN.md
+Last session: 2026-04-27T22:04:26.085Z
+Stopped at: Completed 01.3-01-PLAN.md (partial — verify-log-mask Job B failed; SC#1 complete, SC#2 blocked)
 Resume file: None
 
-**Planned Phase:** 01.2 (Fix npx tsx env-var stripping in composite action runtime (INSERTED)) — 1 plans — 2026-04-27T18:05:40.306Z
+**Planned Phase:** 01.3 (Fix pre-existing phase1-self-test.yml test-design bugs (INSERTED)) — 1 plans — 2026-04-27T20:56:51.405Z
