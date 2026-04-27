@@ -80,13 +80,27 @@ jobs:
           fi
           echo "Job A id: $JOB_ID"
           gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" > job-a.log
-          if grep -q 'test-canary-DO-NOT-USE-REAL-KEY' job-a.log; then
+          # Phase 01.3 plan-correction: the runner echoes every `run:` block's
+          # command text in the step header (the `[36;1m...[0m` ANSI display)
+          # BEFORE the shell executes the command and BEFORE stdout-emitted
+          # ::add-mask:: registrations take effect. The "Pre-register canary
+          # with runner masker" step's own command (echo "::add-mask::LITERAL")
+          # therefore necessarily contains the literal in its log line — that
+          # is the registration mechanism, not a leak.
+          #
+          # Filter `::add-mask::` lines from the haystack before grepping for
+          # the canary. By construction those lines contain the literal. Any
+          # OTHER leak (from the `with:` step header on `uses: ./`, from an
+          # INPUT_API-KEY env-block dump, from the action body output) still
+          # contains the canary on a non-`::add-mask::` line and trips the gate.
+          grep -v '::add-mask::' job-a.log > job-a-filtered.log
+          if grep -q 'test-canary-DO-NOT-USE-REAL-KEY' job-a-filtered.log; then
             echo "::error::Canary appeared in the log — masking FAILED"
-            echo "--- Offending lines: ---"
-            grep -n 'test-canary-DO-NOT-USE-REAL-KEY' job-a.log | head -20
+            echo "--- Offending lines (after filtering ::add-mask:: registration lines): ---"
+            grep -n 'test-canary-DO-NOT-USE-REAL-KEY' job-a-filtered.log | head -20
             exit 1
           fi
-          echo "OK: canary was masked (raw value not found in Job A log)"
+          echo "OK: canary was masked (raw value not found in Job A log outside ::add-mask:: registration lines)"
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 2 (CFG-05 / ROADMAP SC#4 / D-06) — Invalid mode fails with Zod error.
