@@ -58,3 +58,47 @@ describe('diff-lint — FIX-06', () => {
     expect(lintDiff(diff).some((f) => f.pattern === 'waitForTimeout')).toBe(true);
   });
 });
+
+describe('diff-lint — xpath-prefix false-positive regression (HI-02)', () => {
+  // Helper: build a minimal unified diff with a single added line in tests/
+  function patchWithLine(addedLine: string): string {
+    return [
+      'diff --git a/tests/x.spec.ts b/tests/x.spec.ts',
+      '--- a/tests/x.spec.ts',
+      '+++ b/tests/x.spec.ts',
+      '@@ -1,1 +1,2 @@',
+      ' existing line',
+      `+${addedLine}`,
+    ].join('\n');
+  }
+
+  it('does NOT flag a TypeScript // comment line (false-positive guard)', () => {
+    const diff = patchWithLine('// Fix: use getByRole instead of positional XPath');
+    const findings = lintDiff(diff);
+    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(false);
+  });
+
+  it('does NOT flag page.goto with // URL prefix (false-positive guard)', () => {
+    const diff = patchWithLine("await page.goto('//cdn.example.com/bundle.js');");
+    const findings = lintDiff(diff);
+    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(false);
+  });
+
+  it('flags page.locator with // XPath prefix (true positive)', () => {
+    const diff = patchWithLine("const el = page.locator('//div[@id=\"target\"]');");
+    const findings = lintDiff(diff);
+    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(true);
+  });
+
+  it('flags waitForSelector with // XPath prefix (true positive)', () => {
+    const diff = patchWithLine("await page.waitForSelector('//button[@aria-label=\"submit\"]');");
+    const findings = lintDiff(diff);
+    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(true);
+  });
+
+  it('flags getByText with // XPath prefix (true positive — getBy* family)', () => {
+    const diff = patchWithLine("page.getByText('//literal text');");
+    const findings = lintDiff(diff);
+    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(true);
+  });
+});
