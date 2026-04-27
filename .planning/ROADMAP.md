@@ -39,6 +39,16 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 01-05-PLAN.md — CI enforcement: .github/workflows/security-lint.yml with 4 D-14 checks (SEC-01, SEC-02, SEC-07)
 - [x] 01-06-PLAN.md — CI self-test: .github/workflows/phase1-self-test.yml with 5 jobs including TWO-JOB canary-mask pattern (SEC-06, CFG-02, CFG-05)
 
+### Phase 01.2: Fix npx tsx env-var stripping in composite action runtime (INSERTED)
+
+**Goal:** action.yml's runtime spawn shape preserves hyphenated `INPUT_*` env vars end-to-end so every kebab-cased input reaches `@actions/core.getInput` intact, and `phase1-self-test.yml` has a dedicated regression-test job asserting this invariant — restoring real-CI viability of the composite action and unblocking Phase 03 SC-1/SC-3 live verification (per `03-HUMAN-UAT.md` G-01).
+**Requirements**: G-01-PHASE-01.2 (re-satisfies Phase 01 PKG-01, PKG-02, CFG-02 in real CI)
+**Depends on:** Phase 01
+**Plans:** 1 plan
+
+Plans:
+- [ ] 01.2-01-PLAN.md — Empirical gate + action.yml two-site fix + dedicated regression job in phase1-self-test.yml
+
 ### Phase 1.1: Multi-Provider Input Surface (INSERTED)
 **Goal**: The action's input surface is provider-agnostic — the same `api-key` input is consumed by Anthropic, Gemini, and Ollama adapters (adapters land in Phase 3). Empty `api-key` is allowed when `provider=ollama` so users can point at a local Ollama instance without auth.
 **Depends on**: Phase 1
