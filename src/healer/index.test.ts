@@ -276,3 +276,46 @@ describe('run() — provider switch (D-01)', () => {
     }));
   });
 });
+
+describe('run() — HI-01 cwd threading', () => {
+  it('passes GITHUB_WORKSPACE as cwd to both validate() call sites', async () => {
+    const originalWs = process.env['GITHUB_WORKSPACE'];
+    process.env['GITHUB_WORKSPACE'] = '/consumer/workspace';
+    try {
+      mockValidate
+        .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+        .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+      mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+      await run(baseConfig);
+      // Both validate() calls (Step 4 sanity and Step 10 post-fix) should receive cwd
+      expect(mockValidate).toHaveBeenCalledTimes(2);
+      expect(mockValidate.mock.calls[0][3]).toBe('/consumer/workspace');
+      expect(mockValidate.mock.calls[1][3]).toBe('/consumer/workspace');
+    } finally {
+      if (originalWs === undefined) {
+        delete process.env['GITHUB_WORKSPACE'];
+      } else {
+        process.env['GITHUB_WORKSPACE'] = originalWs;
+      }
+    }
+  });
+});
+
+describe('run() — HI-03 outer catch D-09 routing', () => {
+  it('routes bundleContext error to no-fix-proposable issue and calls core.setFailed', async () => {
+    mockBundleContext.mockRejectedValueOnce(new Error('Path outside workspace: /etc/passwd'));
+    await run(baseConfig);  // must NOT throw
+    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
+      failureMode: 'no-fix-proposable',
+      rootCause: expect.stringMatching(/Unexpected pipeline error:.*Path outside workspace/),
+    }));
+    expect(mockSetFailed).toHaveBeenCalledWith('Path outside workspace: /etc/passwd');
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('calls supervisorStop even when outer catch fires (finally still runs)', async () => {
+    mockBundleContext.mockRejectedValueOnce(new Error('boom'));
+    await run(baseConfig);
+    expect(mockSupervisorStop).toHaveBeenCalled();
+  });
+});

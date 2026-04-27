@@ -121,3 +121,21 @@ describe('VAL-04 — does not restart the app between reruns', () => {
     expect(src).not.toMatch(/from ['"][./]+app-supervisor/);
   });
 });
+
+describe('validate — HI-01 cwd threading', () => {
+  it('passes cwd to getExecOutput options when provided', async () => {
+    mockExec.mockResolvedValue({ stdout: PASSED_JSON, stderr: '', exitCode: 0 });
+    await validate('tests/x.spec.ts', 'my test', 1, '/my/workspace');
+    const callArgs = mockExec.mock.calls[0];
+    const options = callArgs[2] as { cwd?: string };
+    expect(options.cwd).toBe('/my/workspace');
+  });
+
+  it('passes cwd=undefined to getExecOutput when no cwd argument', async () => {
+    mockExec.mockResolvedValue({ stdout: PASSED_JSON, stderr: '', exitCode: 0 });
+    await validate('tests/x.spec.ts', 'my test', 1);
+    const callArgs = mockExec.mock.calls[0];
+    const options = callArgs[2] as { cwd?: string };
+    expect(options.cwd).toBeUndefined();
+  });
+});
