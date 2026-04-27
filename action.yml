@@ -166,7 +166,7 @@ runs:
       run: |
         bash -c "exec ${{ inputs.start-command }}" &
         echo $! > /tmp/playwright-healer-app-pid
-        npx tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
+        ${{ github.action_path }}/node_modules/.bin/tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
 
     # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
     - name: Run playwright-healer
@@ -201,7 +201,7 @@ runs:
         INPUT_STARTUP-TIMEOUT-SECONDS: ${{ inputs.startup-timeout-seconds }}
         # Phase 3 — orchestrator reads HEALER_DEFAULT_BRANCH for fix-applier rebase target
         HEALER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      run: npx tsx src/index.ts
+      run: ./node_modules/.bin/tsx src/index.ts
 
     # Step 7 (NEW) — outer cleanup post-step (D-12 layer 2 / HEA-06)
     - name: Cleanup leaked processes (always, heal mode)
