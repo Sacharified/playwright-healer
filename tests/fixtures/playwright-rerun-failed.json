@@ -1,0 +1,11 @@
+{
+  "config": { "version": "1.49.0" },
+  "stats": {
+    "expected": 0,
+    "unexpected": 1,
+    "flaky": 0,
+    "skipped": 0,
+    "duration": 1200
+  },
+  "suites": []
+}
