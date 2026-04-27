@@ -9,6 +9,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 
 export const BOT_EMAIL = 'playwright-healer-bot@users.noreply.github.com';
+export const BOT_NAME = 'playwright-healer-bot';
 export const SKIP_SENTINEL = '[skip-healer]';
 
 /**
