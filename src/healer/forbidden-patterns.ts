@@ -15,11 +15,14 @@ export const FORBIDDEN_PATCHED_LINE_PATTERNS = Object.freeze([
   { name: 'nth-of-type',    re: /:nth-of-type\s*\(/ },
   { name: 'xpath-equals',   re: /xpath\s*=/ },
   // Matches // only when it appears as the start of a string literal argument to a
-  // Playwright selector call. This avoids false-positives on TypeScript // comments
-  // while still catching page.locator('//div'), waitForSelector('//button'), getByText('//...').
-  // The locator-anchored form is chosen over bare /['"`]\/\// to avoid firing on
-  // page.goto('//cdn.example.com') and similar URL patterns. (D-16 / HI-02)
-  { name: 'xpath-prefix',   re: /(?:locator|waitForSelector|getBy\w+)\s*\(\s*['"`]\/\// },
+  // Playwright selector-string API. Anchored to locator and waitForSelector — the
+  // only Playwright APIs whose first string argument is interpreted as a selector
+  // (where // is XPath syntax). The getBy* family (getByText, getByRole, getByLabel,
+  // etc.) takes literal text/role/label arguments — // there is just two slash
+  // characters, not XPath, so flagging is a false positive (WR-01). page.goto takes
+  // a URL, not a selector, so URLs like '//cdn.example.com' are also unaffected.
+  // (D-16 / HI-02 / WR-01)
+  { name: 'xpath-prefix',   re: /(?:locator|waitForSelector)\s*\(\s*['"`]\/\// },
 ] as const);
 
 export const ASSERTION_WEAKENING_PAIRS = Object.freeze([

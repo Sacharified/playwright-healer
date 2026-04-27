@@ -96,9 +96,29 @@ describe('diff-lint — xpath-prefix false-positive regression (HI-02)', () => {
     expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(true);
   });
 
-  it('flags getByText with // XPath prefix (true positive — getBy* family)', () => {
+  // WR-01: Playwright getBy* family (getByText/getByRole/getByLabel/getByPlaceholder/
+  // getByTitle/getByAltText/getByTestId) takes literal text or role identifiers, NOT
+  // a selector. A leading // is two literal slash characters, not XPath syntax. The
+  // xpath-prefix lint must NOT flag these calls or it would route valid agent fixes
+  // through the getBy* APIs to issue-fallback when they should land as PRs.
+  it('does NOT flag getByText with // literal-text argument (false-positive guard)', () => {
     const diff = patchWithLine("page.getByText('//literal text');");
     const findings = lintDiff(diff);
-    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(true);
+    expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(false);
+  });
+
+  it('does NOT flag getByLabel / getByRole / getByPlaceholder / getByAltText / getByTestId with // literal arguments', () => {
+    const cases = [
+      "await page.getByLabel('//username field').fill('alice');",
+      "await page.getByRole('button', { name: '//submit' }).click();",
+      "await page.getByPlaceholder('//search...').fill('q');",
+      "await page.getByAltText('//hero image').click();",
+      "await page.getByTestId('//checkout-button').click();",
+    ];
+    for (const line of cases) {
+      const diff = patchWithLine(line);
+      const findings = lintDiff(diff);
+      expect(findings.some((f) => f.pattern === 'xpath-prefix')).toBe(false);
+    }
   });
 });
