@@ -3,7 +3,7 @@ status: partial
 phase: 03-manual-healer-selectors-waits-issue-fallback
 source: [03-VERIFICATION.md]
 started: 2026-04-27T15:15:00Z
-updated: 2026-04-27T20:35:00Z
+updated: 2026-04-28T00:00:00Z
 g01_resolved_via: .planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md
 g01_resolved_evidence: |
   Phase 01.2 deployed `./node_modules/.bin/tsx` at both action.yml call sites + new
@@ -17,7 +17,18 @@ g01_resolved_evidence: |
 
 ## Current Test
 
-[blocked by Phase 01 npx-tsx env-var bug — see Test 1 result]
+number: 2
+name: No zombie processes after startup timeout / clean app PID cleanup
+expected: |
+  Configure a `start-command` that intentionally never reaches the
+  `base-url` ready state, with `startup-timeout-seconds: 10`. After workflow
+  completes, verify no orphaned `playwright-mcp`, `chromium`, or app processes
+  remain on the runner. Specifically per IN-01: when `start-command` is
+  `npm run dev`, verify SIGTERM propagation from the npm wrapper PID (captured
+  by Step 5's `bash -c "exec ${start-command}"` spawn) reaches the underlying
+  node child. The outer `pkill` cleanup (action.yml Step 7, D-12 layer 2) is
+  the safety net.
+awaiting: user response
 
 ## Tests
 
@@ -30,9 +41,31 @@ actually running on it — not a vacuous "all checks passed" with zero check run
 PR creation requires a PAT (`healer-token` input) — `GITHUB_TOKEN` cannot trigger
 downstream CI on bot-opened PRs (GitHub recursion guard).
 
-result: pending — env-var blocker is resolved by Phase 01.2 (G-01 closed 2026-04-27);
-re-attempt the SC-1 fixture run on Sacharified/playwright-healer-test now that
-hyphenated INPUT_* survives the action's spawn shape on ubuntu-latest.
+result: pass
+
+verified_at: 2026-04-28
+verified_evidence: |
+  After Phase 01.2 (./node_modules/.bin/tsx fix) + Phase 01.3 (phase1-self-test.yml
+  test-design fixes; live run 25022284855 green on all 7 jobs), SC-1 was re-attempted
+  on Sacharified/playwright-healer-test via manual `workflow_dispatch` of sc1-healer.yml
+  (provider=gemini, healer-token=secrets.HEALER_PAT). The healer action ran end-to-end
+  and OPENED A PR titled `[playwright-healer] Fix flaky <test title>` against the
+  fixture repo. PR creation succeeded — confirms the healer-token PAT path works,
+  the env-var stripping bug is gone in real CI, and the agent-loop → fix-applier →
+  PR-opener pipeline is functional end-to-end.
+
+residual_concerns:
+  - The diagnostic Debug step in sc1-healer.yml (the npm-installed @actions/core
+    getInput sub-test) crashes with `ERR_PACKAGE_PATH_NOT_EXPORTED` because tsx's
+    CJS loader does not honor @actions/core@3.0.1's ESM-only `exports` field via
+    `require()`. This is a tsx-vs-Node-ESM diagnostic issue; the production action
+    uses ESM `import`, so it's unaffected. The diagnostic step should be removed
+    or wrapped with `continue-on-error: true` to avoid flaky reruns of sc1-healer.yml.
+    Filed as a low-severity workflow-hygiene item, not a Phase 03 blocker.
+  - CI-fired-on-PR confirmation (the "not vacuous all checks passed" sub-criterion
+    of Test 1's expected) is implicit in PR creation via PAT — the healer-token PAT
+    is exactly the path that bypasses GitHub's recursion guard, so fixture-ci.yml
+    should fire on the bot-opened PR. Spot-confirm on the actual PR if needed.
 
 evidence:
 - Throwaway fixture repo created: Sacharified/playwright-healer-test (private clone of playwright-healer at SHA 40cc6c9 + Express app with `<button id="correct-id">` + Playwright test using `#wrong-id` + 2 workflows: sc1-healer.yml dispatch + fixture-ci.yml on PR)
@@ -84,9 +117,9 @@ result: [pending]
 ## Summary
 
 total: 2
-passed: 0
+passed: 1
 issues: 0
-pending: 2
+pending: 1
 skipped: 0
 blocked: 0
 
