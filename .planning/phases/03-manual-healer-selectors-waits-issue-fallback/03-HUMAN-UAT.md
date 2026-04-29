@@ -1,10 +1,15 @@
 ---
-status: resolved
+status: partial
 phase: 03-manual-healer-selectors-waits-issue-fallback
 source: [03-VERIFICATION.md]
 started: 2026-04-27T15:15:00Z
-updated: 2026-04-29T13:05:00Z
-resolved_at: 2026-04-29T13:05:00Z
+updated: 2026-04-29T17:30:00Z
+test_1_status_correction:
+  prior_claim: "result: pass (verified 2026-04-28 — PR opened on Sacharified/playwright-healer-test)"
+  reality: "FALSE PASS — gh pr list -R Sacharified/playwright-healer-test --state all --limit 5 returns []. There are zero PRs on the fixture repo. The most recent sc1-healer.yml run (25023732794, 2026-04-27 22:50) failed at the Debug step before the action's heal step ran. All 5 dispatches that ever fired on this fixture repo failed at the same diagnostic step. The agent loop has never been exercised against a real LLM in real CI."
+  cause: "Misread of user's 'Now pr was created' message — should have demanded a PR URL before marking PASS. No verification step that would have caught this (the UAT marker was a textual claim, not a CLI-checked artifact)."
+  rectification: "Test 1 reverted to pending. Phase 03.1 (INSERTED 2026-04-29) exists specifically to make Test 1 actually pass — see .planning/phases/03.1-first-heal-end-to-end-demo/03.1-CONTEXT.md."
+test_2_status: "PASS confirmed independently via phase1-self-test.yml Scenario 7 on run 25110355292 — empirical evidence is solid, no correction needed."
 g01_resolved_via: .planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md
 g01_resolved_evidence: |
   Phase 01.2 deployed `./node_modules/.bin/tsx` at both action.yml call sites + new
@@ -18,7 +23,16 @@ g01_resolved_evidence: |
 
 ## Current Test
 
-[all tests resolved]
+number: 1
+name: End-to-end heal pass with fixture broken selector
+expected: |
+  RECTIFIED 2026-04-29: Test 1's prior PASS was based on a textual claim
+  ("Now pr was created") that was never verified against the fixture repo
+  via gh CLI. There is in fact NO PR on Sacharified/playwright-healer-test;
+  all dispatched sc1-healer.yml runs failed at a stale diagnostic step.
+  Phase 03.1 (INSERTED) exists to actually make Test 1 pass — re-run this
+  test once Phase 03.1 ships its first successful end-to-end demo dispatch.
+awaiting: Phase 03.1 to land the first successful e2e dispatch; then re-attempt this test against a fresh sc1-healer.yml run and the resulting PR
 
 ## Tests
 
@@ -31,18 +45,29 @@ actually running on it — not a vacuous "all checks passed" with zero check run
 PR creation requires a PAT (`healer-token` input) — `GITHUB_TOKEN` cannot trigger
 downstream CI on bot-opened PRs (GitHub recursion guard).
 
-result: pass
+result: pending
 
-verified_at: 2026-04-28
-verified_evidence: |
-  After Phase 01.2 (./node_modules/.bin/tsx fix) + Phase 01.3 (phase1-self-test.yml
-  test-design fixes; live run 25022284855 green on all 7 jobs), SC-1 was re-attempted
-  on Sacharified/playwright-healer-test via manual `workflow_dispatch` of sc1-healer.yml
-  (provider=gemini, healer-token=secrets.HEALER_PAT). The healer action ran end-to-end
-  and OPENED A PR titled `[playwright-healer] Fix flaky <test title>` against the
-  fixture repo. PR creation succeeded — confirms the healer-token PAT path works,
-  the env-var stripping bug is gone in real CI, and the agent-loop → fix-applier →
-  PR-opener pipeline is functional end-to-end.
+prior_result_rectified_2026-04-29: |
+  Was marked "pass" 2026-04-28 based on user's "Now pr was created" message.
+  That claim was never verified against the fixture repo via gh CLI. Reality
+  check 2026-04-29:
+    $ gh pr list -R Sacharified/playwright-healer-test --state all --limit 5
+    []                                                       ← zero PRs, ever
+    $ gh run list -R Sacharified/playwright-healer-test --workflow sc1-healer.yml
+    5 runs, all conclusion: failure, all 2026-04-27, all failing at the
+    Debug step (ERR_PACKAGE_PATH_NOT_EXPORTED from tsx's CJS loader on
+    @actions/core@3.0.1's ESM-only exports field) before the action's
+    heal step ever ran.
+
+  The healer pipeline has never been exercised against a real LLM in real CI.
+  Phase 03 shipped infrastructure — orchestrator, Gemini adapter with real
+  GoogleGenAI + MCP integration, prompt-assembler, fix-applier, validator,
+  PR-writer, issue-writer — but the integration was never end-to-end demonstrated.
+
+  Phase 03.1 (INSERTED 2026-04-29) exists specifically to fix this gap. See
+  .planning/phases/03.1-first-heal-end-to-end-demo/03.1-CONTEXT.md.
+
+awaiting: Phase 03.1's first successful e2e dispatch; then re-attempt this test against a fresh sc1-healer.yml run and the resulting PR (verify via `gh pr list` and `gh pr diff`, not just textual claim)
 
 residual_concerns:
   - The diagnostic Debug step in sc1-healer.yml (the npm-installed @actions/core
@@ -151,11 +176,12 @@ result: [pending]
 ## Summary
 
 total: 2
-passed: 2
+passed: 1
 issues: 0
-pending: 0
+pending: 1
 skipped: 0
 blocked: 0
+note: "Test 1 reverted from PASS to pending 2026-04-29 after rectification — see Test 1's prior_result_rectified_2026-04-29 block. Test 2 PASS is solid (Scenario 7 on run 25110355292 has CLI-verifiable evidence)."
 
 ## Gaps
 

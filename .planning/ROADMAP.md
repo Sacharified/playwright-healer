@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1.3: Fix pre-existing phase1-self-test.yml test-design bugs** (INSERTED, complete 2026-04-27) - Three test-design bugs unmasked by Phase 01.2 (action now runs end-to-end so latent assertion bugs surface): (1) Scenarios 4+5 assume `$GITHUB_STEP_SUMMARY` is job-wide but it is per-step, so the bash assertion reads a different (empty) summary file than the dispatcher wrote to; (2) Scenario 1 Job B (`verify-log-mask`) checks Job A's `gh api .../logs` for raw canary, but the runner emits `with: api-key: <canary>` (line 150) and `INPUT_API-KEY: <canary>` (line 205) in the step header BEFORE the action body's `core.setSecret()` runs — TWO-JOB pattern is structurally unable to mask literal `with:` values. Pre-existing since Phase 01-06 / 01.1, never actually green on real CI (the env-var-stripping bug masked them by failing Job A early). NOT in Phase 01.2 scope.
 - [x] **Phase 2: Ingest + State Branch + Log-Only Detection** (complete 2026-04-25) - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
 - [x] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** (complete 2026-04-29) - Full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback. 13 plans + 2 gap-closure plans (03-14, 03-15) all shipped; HUMAN-UAT Tests 1+2 PASS (SC-1 PR creation; IN-01 SIGTERM propagation via Scenario 7 run 25110355292)
+- [ ] **Phase 3.1: First Heal — End-to-End Demo** (INSERTED 2026-04-29) - Phase 03 shipped infrastructure but never exercised the heal pipeline against a real LLM in real CI. Demonstrate the core concept exactly once: a broken selector test in `Sacharified/playwright-healer-test` produces a PR whose diff, when applied, makes the test pass on `fixture-ci.yml`. Skip diff-lint and post-fix validator (`fixture-ci.yml` on the PR is the truth). Switch fixture's action ref to `Sacharified/playwright-healer@main` for fast iteration. Single bug class (selectors), single fixture, single LLM call (Gemini), single success criterion.
 - [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
 - [ ] **Phase 5: Auto-Merge** - Add opt-in auto-merge for high-confidence fixes that pass all trust-chain gates
 - [ ] **Phase 6: Documentation + Release** - Ship consumer documentation, example workflows, self-test CI, and the first immutable version tag
@@ -122,6 +123,16 @@ Plans:
 - [ ] 03-12-PLAN.md — Heal orchestrator: 11-step pipeline + D-09 routing tree (HEA-01, HEA-06, FIX-08, PRI-05)
 - [ ] 03-13-PLAN.md — action.yml two-step app supervisor + post-cleanup + wait-for-ready CLI (HEA-01, HEA-02, HEA-03, HEA-06)
 
+### Phase 3.1: First Heal — End-to-End Demo (INSERTED)
+**Goal**: A `workflow_dispatch` of `sc1-healer.yml` on `Sacharified/playwright-healer-test` produces a PR titled `[playwright-healer] Fix flaky <test title>` whose diff, when applied, makes `fixture/tests/broken-selector.spec.ts` pass. The PR's own `fixture-ci.yml` workflow run completes with conclusion `success`. This is the project's first end-to-end demonstration of its core value proposition.
+**Depends on**: Phase 3
+**Requirements**: (no new REQ-IDs — all infrastructure inherited from Phase 03)
+**Success Criteria** (single, narrow):
+  1. PR appears on `Sacharified/playwright-healer-test` titled `[playwright-healer] Fix flaky <test title>` with a non-empty diff that changes `#wrong-id` → `#correct-id` in `fixture/tests/broken-selector.spec.ts`
+  2. The PR's `fixture-ci.yml` workflow run reaches conclusion `success` (real Playwright execution against the patched test passes)
+**Plans**: TBD (small phase — likely 2-3 plans: action-side skips for diff-lint and post-fix validator; fixture-side workflow cleanup; iteration loop until success)
+**Context**: see `03.1-CONTEXT.md` for locked decisions (D-01..D-08), open questions for researcher (Q-01..Q-03), and out-of-scope/deferred items
+
 ### Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication
 **Goal**: The threshold evaluator fires live `workflow_dispatch` events when tests breach thresholds; the healer handles all four fix classes (selectors, waits, assertions, slow-test optimizations); repeat triggers for the same test update the existing open PR or issue rather than creating duplicates
 **Depends on**: Phase 3
@@ -168,6 +179,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1.3 Fix phase1-self-test.yml test-design bugs | 1/1 | Complete | 2026-04-27 |
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
+| 3.1 First Heal — End-to-End Demo (INSERTED) | 0/TBD | Discussed | - |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
 | 6. Documentation + Release | 0/TBD | Not started | - |
