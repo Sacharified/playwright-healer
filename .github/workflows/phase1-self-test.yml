@@ -324,3 +324,128 @@ jobs:
           # Use the same spawn shape that action.yml Step 6 now uses.
           # If this fails, the npx-tsx fix has regressed.
           ./node_modules/.bin/tsx -e "if (process.env['INPUT_FOO-BAR'] !== 'hello') { console.error('::error::INPUT_FOO-BAR was stripped or mutated. Got:', JSON.stringify(process.env['INPUT_FOO-BAR'])); process.exit(1); } console.log('OK: INPUT_FOO-BAR survived spawn (length=' + process.env['INPUT_FOO-BAR'].length + ')');"
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCENARIO 7 (Phase 03 UAT Test 2 / IN-01 startup-timeout cleanup) —
+  # heal-mode start-command intentionally never opens base-url; verify
+  # Step 5 (wait-for-ready.ts) times out at 10s, Step 7 (if: always())
+  # cleanup kills both the captured wrapper PID and its child node PID.
+  #
+  # Mirrors the npm-run-dev signal-propagation contract: a parent shell
+  # wrapper + a child node process. SIGTERM to the wrapper must reach
+  # the child via the wrapper's trap (npm@10+ does this correctly via
+  # run-script's signal forwarding). If the child survives, IN-01 is
+  # violated and zombie chromium/playwright-mcp processes will leak in
+  # production heal runs.
+  #
+  # No real PAT or LLM call is exercised — provider=ollama with empty
+  # api-key passes Zod superRefine; Step 6 never runs because Step 5
+  # fails; Step 7 (if: always()) does run and is the unit under test.
+  # ──────────────────────────────────────────────────────────────────
+  self-test-startup-timeout-cleanup:
+    name: 'Self-test — heal mode startup-timeout triggers clean process teardown'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Create never-ready wrapper fixture (mimics npm-run-dev shape)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/never-ready.sh <<'WRAPPER'
+          #!/bin/bash
+          # IN-01 fixture: parent shell wrapper + child node process.
+          # SIGTERM to the wrapper must propagate to the child via trap.
+          node -e 'process.title = "never-ready-marker"; setInterval(() => {}, 1000)' &
+          NODE_PID=$!
+          echo "wrapper-pid=$$ child-node-pid=$NODE_PID" > /tmp/never-ready-pids.txt
+          trap "kill -TERM $NODE_PID 2>/dev/null; wait $NODE_PID 2>/dev/null; exit 0" TERM INT
+          wait $NODE_PID
+          WRAPPER
+          chmod +x /tmp/never-ready.sh
+
+      - name: Invoke action with never-ready start-command (heal mode, 10s timeout)
+        id: run
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: heal
+          provider: ollama
+          api-key: ''
+          api-endpoint: http://localhost:11434
+          healer-token: 'test-canary-pat-DO-NOT-USE'
+          github-token: ${{ github.token }}
+          setup-command: 'echo "no setup needed"'
+          start-command: '/tmp/never-ready.sh'
+          test-command: 'echo "no test needed"'
+          base-url: 'http://localhost:3000'
+          startup-timeout-seconds: '10'
+
+      - name: Assert action failed at Step 5 (startup-timeout reached)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.run.outcome }}" != "failure" ]; then
+            echo "::error::Expected outcome=failure (startup-timeout) but got outcome=${{ steps.run.outcome }}"
+            exit 1
+          fi
+          echo "OK: action failed as expected (Step 5 wait-for-ready hit 10s timeout)"
+
+      - name: Assert no zombie processes remain (Step 7 cleanup + IN-01 propagation)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Diagnostic: surface the PIDs the wrapper recorded so failure logs are decodable.
+          if [ -f /tmp/never-ready-pids.txt ]; then
+            echo "Wrapper recorded: $(cat /tmp/never-ready-pids.txt)"
+          else
+            echo "::warning::/tmp/never-ready-pids.txt missing — wrapper may not have started before timeout"
+          fi
+
+          # 1. The captured app PID (Step 5 stored it via echo $! > /tmp/playwright-healer-app-pid).
+          #    Step 7 ran `kill "$(cat /tmp/playwright-healer-app-pid)"` — it should be dead now.
+          if [ -f /tmp/playwright-healer-app-pid ]; then
+            APP_PID=$(cat /tmp/playwright-healer-app-pid)
+            echo "Action captured app PID: $APP_PID"
+            if kill -0 "$APP_PID" 2>/dev/null; then
+              echo "::error::Captured app PID $APP_PID is STILL ALIVE after Step 7 cleanup"
+              ps -ef | head -50
+              exit 1
+            fi
+            echo "OK: captured app PID $APP_PID is dead"
+          else
+            echo "::warning::/tmp/playwright-healer-app-pid missing — Step 5 may have failed before the spawn line"
+          fi
+
+          # 2. The child node process (the actual workload spawned by the wrapper).
+          #    If pgrep finds the marker, the wrapper's trap did NOT forward SIGTERM
+          #    to the child — IN-01 contract is broken and production heal runs
+          #    would leak the user's app process.
+          if pgrep -f never-ready-marker >/dev/null 2>&1; then
+            echo "::error::never-ready-marker child node STILL ALIVE — wrapper SIGTERM did NOT propagate (IN-01 violation)"
+            pgrep -af never-ready-marker
+            exit 1
+          fi
+          echo "OK: never-ready-marker child node is dead — wrapper-to-child SIGTERM propagation verified (IN-01)"
+
+          # 3. Defense-in-depth: no playwright-mcp / chromium leaked. Step 6 didn't run
+          #    in this scenario — it would have if Step 5 succeeded — but if a future
+          #    Phase 03 plan wires MCP earlier, this catches it.
+          if pgrep -f playwright-mcp >/dev/null 2>&1; then
+            echo "::error::playwright-mcp process leaked after cleanup"
+            pgrep -af playwright-mcp
+            exit 1
+          fi
+          echo "OK: no playwright-mcp processes"
+
+          if pgrep -x chromium >/dev/null 2>&1 || pgrep -x chrome >/dev/null 2>&1; then
+            echo "::error::chromium/chrome process leaked after cleanup"
+            pgrep -af 'chromium|chrome' || true
+            exit 1
+          fi
+          echo "OK: no chromium processes"
+
+          echo "OK: zombie-process check passed — Step 7 cleanup + IN-01 wrapper-to-child SIGTERM both functional"
