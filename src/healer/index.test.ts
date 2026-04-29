@@ -84,6 +84,10 @@ const baseConfig: Config = {
   retentionDays: 90, maxHealsPerTestPerWeek: 3, stateBranchName: 'playwright-healer-state',
   enableSelectorFixes: true, enableWaitFixes: true, enableAssertionFixes: true, enableSlowFixes: true,
   startupTimeoutSeconds: 120,
+  // Phase 03.1 demo-mode skip flags — all false by default (production behavior unchanged)
+  skipDeterministicCheck: false,
+  skipPostFixValidation: false,
+  skipDiffLint: false,
 } as Config;
 
 const validPayload = {
@@ -317,5 +321,80 @@ describe('run() — HI-03 outer catch D-09 routing', () => {
     mockBundleContext.mockRejectedValueOnce(new Error('boom'));
     await run(baseConfig);
     expect(mockSupervisorStop).toHaveBeenCalled();
+  });
+});
+
+describe('run() — Phase 03.1 demo-mode skip flags (HEA-04 / HEA-05)', () => {
+  it('skipDeterministicCheck=true: gate bypassed when passRate=0, adapter called', async () => {
+    // Sanity rerun returns passRate=0 (always-failing fixture); skip flag prevents
+    // the deterministic-failure issue from being filed and lets the run proceed to Gemini.
+    mockValidate.mockResolvedValueOnce({ passed: 0, total: 3, passRate: 0, perRun: [] });
+    mockRunAgent.mockResolvedValue({
+      proposal: { diff: 'diff', rootCause: 'r', rationale: 'r', fixClass: 'selectors' },
+      stats: { usdSpent: 0.01, turnsUsed: 1 },
+    });
+    mockApplyFix.mockResolvedValue({ branch: 'healer/fix-branch' });
+    mockValidate.mockResolvedValue({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    await run({ ...baseConfig, skipDeterministicCheck: true });
+    expect(mockOpenIssue).not.toHaveBeenCalledWith(
+      expect.objectContaining({ failureMode: 'deterministic-failure' }),
+    );
+    expect(mockRunAgent).toHaveBeenCalled();
+  });
+
+  it('skipDiffLint=true: diff-lint findings ignored, fix applied', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    mockRunAgent.mockResolvedValue({
+      proposal: { diff: 'diff', rootCause: 'r', rationale: 'r', fixClass: 'selectors' },
+      stats: { usdSpent: 0.01, turnsUsed: 1 },
+    });
+    mockLintDiff.mockReturnValue([{ pattern: 'waitForTimeout', line: 1 }]);
+    mockApplyFix.mockResolvedValue({ branch: 'healer/fix-branch' });
+    mockValidate.mockResolvedValueOnce({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    await run({ ...baseConfig, skipDiffLint: true });
+    expect(mockOpenIssue).not.toHaveBeenCalledWith(
+      expect.objectContaining({ failureMode: 'diff-lint-blocked' }),
+    );
+    expect(mockApplyFix).toHaveBeenCalled();
+  });
+
+  it('skipPostFixValidation=true: validate called only once (sanity), PR opened', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    mockRunAgent.mockResolvedValue({
+      proposal: { diff: 'diff', rootCause: 'r', rationale: 'r', fixClass: 'selectors' },
+      stats: { usdSpent: 0.01, turnsUsed: 1 },
+    });
+    mockApplyFix.mockResolvedValue({ branch: 'healer/fix-branch' });
+    // Note: no second mockResolvedValue for validate — it MUST not be called twice.
+    await run({ ...baseConfig, skipPostFixValidation: true });
+    expect(mockValidate).toHaveBeenCalledTimes(1);
+    expect(mockOpenPr).toHaveBeenCalled();
+  });
+
+  // CRITICAL — B-1 regression guard:
+  // When post-fix validation is skipped, openHealerPr must still receive a fully-formed
+  // ValidationResult (with perRun: []), NOT undefined or a partial object. pr-writer.ts
+  // does `args.validation.perRun.map(...)` and crashes if perRun is undefined.
+  it('skipPostFixValidation=true: openHealerPr receives a sentinel ValidationResult with perRun: []', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    mockRunAgent.mockResolvedValue({
+      proposal: { diff: 'diff', rootCause: 'r', rationale: 'r', fixClass: 'selectors' },
+      stats: { usdSpent: 0.01, turnsUsed: 1 },
+    });
+    mockApplyFix.mockResolvedValue({ branch: 'healer/fix-branch' });
+    await run({ ...baseConfig, skipPostFixValidation: true });
+    expect(mockOpenPr).toHaveBeenCalledWith(
+      expect.objectContaining({
+        validation: expect.objectContaining({
+          perRun: expect.any(Array),
+          passed: expect.any(Number),
+          total: expect.any(Number),
+          passRate: expect.any(Number),
+        }),
+      }),
+    );
+    // perRun must be an array (length 0 is OK), never undefined.
+    const call = mockOpenPr.mock.calls[0][0];
+    expect(Array.isArray(call.validation.perRun)).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ describe('prompt-assembler — D-05/D-06/D-07/D-08, FIX-03, HEA-05', () => {
     traceAttachmentPath: '/tmp/trace.zip',
     testTitle: 'completes purchase flow',
     testFile: 'tests/checkout.spec.ts',
+    baseUrl: 'http://localhost:3000',
   };
 
   it('is deterministic — same inputs produce same output', () => {
@@ -76,7 +77,32 @@ describe('prompt-assembler — D-05/D-06/D-07/D-08, FIX-03, HEA-05', () => {
       traceAttachmentPath: null,
       testTitle: 'snapshot test',
       testFile: 'tests/snap.spec.ts',
+      baseUrl: 'http://localhost:3000',
     });
     expect(out).toMatchSnapshot();
+  });
+
+  it('interpolates {{BASE_URL}} into selectors-no-trace template', () => {
+    const result = assemblePrompt({
+      fixClassHint: 'selectors',
+      traceAttachmentPath: null,
+      testTitle: 'should click button',
+      testFile: 'tests/example.spec.ts',
+      baseUrl: 'http://localhost:3000',
+    });
+    expect(result).toContain('http://localhost:3000');
+    expect(result).not.toContain('{{BASE_URL}}');
+  });
+
+  it('replaces {{BASE_URL}} with empty string when baseUrl is empty', () => {
+    const result = assemblePrompt({
+      fixClassHint: 'selectors',
+      traceAttachmentPath: null,
+      testTitle: 'should click button',
+      testFile: 'tests/example.spec.ts',
+      baseUrl: '',
+    });
+    // No literal placeholder leaks through even when value is empty.
+    expect(result).not.toContain('{{BASE_URL}}');
   });
 });
