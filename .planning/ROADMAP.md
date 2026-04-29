@@ -130,7 +130,12 @@ Plans:
 **Success Criteria** (single, narrow):
   1. PR appears on `Sacharified/playwright-healer-test` titled `[playwright-healer] Fix flaky <test title>` with a non-empty diff that changes `#wrong-id` → `#correct-id` in `fixture/tests/broken-selector.spec.ts`
   2. The PR's `fixture-ci.yml` workflow run reaches conclusion `success` (real Playwright execution against the patched test passes)
-**Plans**: TBD (small phase — likely 2-3 plans: action-side skips for diff-lint and post-fix validator; fixture-side workflow cleanup; iteration loop until success)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03.1-01-PLAN.md — Action code changes: three skip flags in config.ts + orchestrator gates + baseUrl interpolation (CRACK-1/D-02/D-03/CRACK-4)
+- [ ] 03.1-02-PLAN.md — action.yml infra: git credentials step (CRACK-2) + Playwright browser install (CRACK-3) + three new skip inputs
+- [ ] 03.1-03-PLAN.md — Fixture workflow update (D-04/D-06/D-07) + GitHub Settings toggle + dispatch iteration until success
 **Context**: see `03.1-CONTEXT.md` for locked decisions (D-01..D-08), open questions for researcher (Q-01..Q-03), and out-of-scope/deferred items
 
 ### Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication
@@ -179,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1.3 Fix phase1-self-test.yml test-design bugs | 1/1 | Complete | 2026-04-27 |
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
-| 3.1 First Heal — End-to-End Demo (INSERTED) | 0/TBD | Discussed | - |
+| 3.1 First Heal — End-to-End Demo (INSERTED) | 0/3 | Planning | - |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
 | 6. Documentation + Release | 0/TBD | Not started | - |
