@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1.2: Fix npx tsx env-var stripping in composite action runtime** (INSERTED, complete 2026-04-27) - Replace `npx tsx` with path-resolved `./node_modules/.bin/tsx` at action.yml Steps 5 and 6 to preserve hyphenated `INPUT_*` env vars on ubuntu-latest; add dedicated `self-test-hyphenated-input-env` regression-test job in phase1-self-test.yml; unblocks Phase 03 SC-1/SC-3 live verification
 - [x] **Phase 1.3: Fix pre-existing phase1-self-test.yml test-design bugs** (INSERTED, complete 2026-04-27) - Three test-design bugs unmasked by Phase 01.2 (action now runs end-to-end so latent assertion bugs surface): (1) Scenarios 4+5 assume `$GITHUB_STEP_SUMMARY` is job-wide but it is per-step, so the bash assertion reads a different (empty) summary file than the dispatcher wrote to; (2) Scenario 1 Job B (`verify-log-mask`) checks Job A's `gh api .../logs` for raw canary, but the runner emits `with: api-key: <canary>` (line 150) and `INPUT_API-KEY: <canary>` (line 205) in the step header BEFORE the action body's `core.setSecret()` runs — TWO-JOB pattern is structurally unable to mask literal `with:` values. Pre-existing since Phase 01-06 / 01.1, never actually green on real CI (the env-var-stripping bug masked them by failing Job A early). NOT in Phase 01.2 scope.
 - [x] **Phase 2: Ingest + State Branch + Log-Only Detection** (complete 2026-04-25) - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
-- [ ] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** - Wire the full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback for all failure modes
+- [x] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** (complete 2026-04-29) - Full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback. 13 plans + 2 gap-closure plans (03-14, 03-15) all shipped; HUMAN-UAT Tests 1+2 PASS (SC-1 PR creation; IN-01 SIGTERM propagation via Scenario 7 run 25110355292)
 - [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
 - [ ] **Phase 5: Auto-Merge** - Add opt-in auto-merge for high-confidence fixes that pass all trust-chain gates
 - [ ] **Phase 6: Documentation + Release** - Ship consumer documentation, example workflows, self-test CI, and the first immutable version tag
@@ -164,8 +164,10 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Security Scaffold + Composite Packaging | 6/6 | Complete | 2026-04-25 |
 | 1.1 Multi-Provider Input Surface | 1/1 | Complete | 2026-04-25 |
+| 1.2 Fix npx tsx env-var stripping | 1/1 | Complete | 2026-04-27 |
+| 1.3 Fix phase1-self-test.yml test-design bugs | 1/1 | Complete | 2026-04-27 |
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
-| 3. Manual Healer (Selectors + Waits + Issue Fallback) | 0/13 | Planned | - |
+| 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
 | 6. Documentation + Release | 0/TBD | Not started | - |
