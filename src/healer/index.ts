@@ -30,6 +30,7 @@ import { BudgetExhausted } from './budget.js';
 import { stop as supervisorStop } from './app-supervisor.js';
 import { bundleContext } from './context-bundler.js';
 import { validate } from './validator.js';
+import type { ValidationResult } from './validator.js';
 import { applyFix } from './fix-applier.js';
 import { createGeminiAdapter } from './adapters/gemini.js';
 import { anthropicAdapter } from './adapters/anthropic.js';
@@ -126,7 +127,7 @@ export async function run(config: Config): Promise<void> {
 
     // ── Step 4: PRI-05 sanity rerun (deterministic-failure detection) ────
     const sanity = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
-    if (sanity.passRate === 0) {
+    if (!config.skipDeterministicCheck && sanity.passRate === 0) {
       await fileIssue({
         config, owner, repo,
         testTitle: payload.testTitle,
@@ -145,6 +146,7 @@ export async function run(config: Config): Promise<void> {
       traceAttachmentPath: context.traceAttachmentPath,
       testTitle: payload.testTitle,
       testFile: payload.testFile,
+      baseUrl: config.baseUrl,
     });
 
     // ── Step 6: Run adapter (FIX-01 / FIX-02 / FIX-04) ──────────────────
@@ -193,7 +195,7 @@ export async function run(config: Config): Promise<void> {
 
     // ── Step 8: Diff-lint (FIX-06) ──────────────────────────────────────
     const findings = lintDiff(proposal.diff);
-    if (findings.length > 0) {
+    if (!config.skipDiffLint && findings.length > 0) {
       await fileIssue({
         config, owner, repo,
         testTitle: payload.testTitle,
@@ -218,18 +220,25 @@ export async function run(config: Config): Promise<void> {
     });
 
     // ── Step 10: Validate the fix (VAL-01 / VAL-02 / VAL-03) ────────────
-    const validation = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
-    if (validation.passRate < config.rerunPassRate) {
-      await fileIssue({
-        config, owner, repo,
-        testTitle: payload.testTitle,
-        triggeringRunUrl,
-        failureMode: 'validation-failed',
-        rootCause: `Fix validation pass rate ${(validation.passRate * 100).toFixed(0)}% (< required ${(config.rerunPassRate * 100).toFixed(0)}%). ${formatStatsLine(stats)}`,
-        reproSteps: `Validator ran ${validation.total} reruns at retries=0; ${validation.passed} passed.`,
-        suggestedManualFix: `The proposed fix is unstable. Inspect the agent rationale: ${proposal.rationale}. ${formatStatsLine(stats)}`,
-      });
-      return;
+    let validation: ValidationResult;
+    if (config.skipPostFixValidation) {
+      // Demo mode (D-02): fixture-ci.yml on the PR is the truth, not local validator.
+      // perRun MUST be [] (not undefined) because pr-writer.ts maps over it.
+      validation = { passed: 0, total: 0, passRate: 1, perRun: [] };
+    } else {
+      validation = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
+      if (validation.passRate < config.rerunPassRate) {
+        await fileIssue({
+          config, owner, repo,
+          testTitle: payload.testTitle,
+          triggeringRunUrl,
+          failureMode: 'validation-failed',
+          rootCause: `Fix validation pass rate ${(validation.passRate * 100).toFixed(0)}% (< required ${(config.rerunPassRate * 100).toFixed(0)}%). ${formatStatsLine(stats)}`,
+          reproSteps: `Validator ran ${validation.total} reruns at retries=0; ${validation.passed} passed.`,
+          suggestedManualFix: `The proposed fix is unstable. Inspect the agent rationale: ${proposal.rationale}. ${formatStatsLine(stats)}`,
+        });
+        return;
+      }
     }
 
     // ── Step 11: Open the PR (PRI-01 / PRI-02 / SC-1) ───────────────────

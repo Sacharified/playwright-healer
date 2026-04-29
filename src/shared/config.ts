@@ -89,6 +89,13 @@ export function getInputSchema() {
                                 .refine((v) => !isNaN(v), { message: 'startup-timeout-seconds must be a valid integer' })
                                 .int().min(1).default(120)
                             ),
+
+    // ── Phase 03.1 demo-mode skip flags (default false — production behavior unchanged) ──
+    // Same z.string() pattern as CFG-04 but inverted default: these flags DEFAULT OFF.
+    // .default('false').transform(v => v === 'true') → absent or 'false' → false; 'true' → true.
+    skipDeterministicCheck: z.string().default('false').transform(v => v === 'true'),
+    skipPostFixValidation:  z.string().default('false').transform(v => v === 'true'),
+    skipDiffLint:           z.string().default('false').transform(v => v === 'true'),
   }).superRefine((v, ctx) => {
     if (v.provider !== 'ollama' && v.apiKey.length === 0) {
       ctx.addIssue({
