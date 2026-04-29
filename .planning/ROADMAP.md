@@ -133,8 +133,8 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03.1-01-PLAN.md — Action code changes: three skip flags in config.ts + orchestrator gates + baseUrl interpolation (CRACK-1/D-02/D-03/CRACK-4)
-- [ ] 03.1-02-PLAN.md — action.yml infra: git credentials step (CRACK-2) + Playwright browser install (CRACK-3) + three new skip inputs
+- [x] 03.1-01-PLAN.md — Action code changes: three skip flags in config.ts + orchestrator gates + baseUrl interpolation (CRACK-1/D-02/D-03/CRACK-4)
+- [x] 03.1-02-PLAN.md — action.yml infra: git credentials step (CRACK-2) + Playwright browser install (CRACK-3) + three new skip inputs
 - [ ] 03.1-03-PLAN.md — Fixture workflow update (D-04/D-06/D-07) + GitHub Settings toggle + dispatch iteration until success
 **Context**: see `03.1-CONTEXT.md` for locked decisions (D-01..D-08), open questions for researcher (Q-01..Q-03), and out-of-scope/deferred items
 
