@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01.3-01-PLAN.md (all 7 jobs green after Option C plan-correction; TEST-01 satisfied)
-last_updated: "2026-04-29T19:10:39.754Z"
-last_activity: 2026-04-29 -- Phase 03.1 execution started
+stopped_at: Completed 03.1-03-PLAN.md (8 dispatch iterations; PR Sacharified/playwright-healer-test#1 with fixture-ci.yml success; total Gemini cost $0.0382 USD; first end-to-end heal demo landed)
+last_updated: "2026-04-30T00:35:00.000Z"
+last_activity: 2026-04-29 -- Phase 03.1 complete; first heal end-to-end demo landed
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 33
-  completed_plans: 32
-  percent: 97
+  completed_plans: 33
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 ## Current Position
 
-Phase: 03.1 (first-heal-end-to-end-demo) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 03.1
-Last activity: 2026-04-29 -- Phase 03.1 execution started
+Phase: 03.1 (first-heal-end-to-end-demo) — COMPLETE
+Plan: 3 of 3 (all complete)
+Status: Phase 03.1 complete; ready to advance to Phase 04 (Auto-Dispatch + Full Fix Classes + Deduplication)
+Last activity: 2026-04-29 -- First end-to-end heal demo landed (PR Sacharified/playwright-healer-test#1, fixture-ci.yml success, $0.0382 USD)
 
-Progress: [█████████░] 78%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -96,6 +96,12 @@ Recent decisions affecting current work:
 - SC#1 fixed: composite-action output bridge (core.setOutput dryRunSummary + action.yml outputs.dry-run-summary) works end-to-end; Scenarios 4+5 green on ubuntu-latest
 - SC#2 recovered via Option C: filter ::add-mask:: lines from verify-log-mask grep; preserves Phase 01-06 TWO-JOB pattern; live CI run 25022284855 all 7 jobs green
 - Phase 01.3 complete: TEST-01 satisfied; phase1-self-test.yml end-to-end green on fresh ubuntu-latest with no repo secrets (SC#3 invariant established)
+- Phase 03.1 demo landing: subpath-checkout fallback (CONTEXT D-04 option B) was the working cross-repo private action access mechanism; the GitHub Settings UI access_level toggle did not propagate to runtime resolver despite user confirmation (account-level setting may differ from API endpoint exposure)
+- Phase 03.1 demo: gemini-2.5-flash chosen for free-tier compatibility (CLAUDE.md default gemini-2.5-pro is NOT free-tier eligible — limit:0); flash produced higher-quality fix than literal #correct-id (used getByRole accessible-name selector)
+- Phase 03.1 demo: total Gemini API cost $0.0382 USD for one successful flash call; first end-to-end heal demonstration of the project's core value proposition
+- Phase 03.1 fix-applier scope-leak: prior `git apply --3way + git add -A` swept untracked files (.healer/, package-lock.json) into commit; replaced with atomic `git apply --3way --index` so only patched files are staged
+- Phase 03.1 fix-applier push: original `git push -u origin <branch>` rejected on re-dispatch (deterministic branch name reuse); --force-with-lease rejected with stale-info on shallow clones; final answer is plain --force given the playwright-healer/* namespace is bot-exclusive
+- Phase 03.1 Rule 3 auto-fix: src/index.ts was missing `core.getInput()` calls for the three skip-* flags (Plan 01 added schema fields, Plan 02 added action.yml inputs + env vars, but src/index.ts wire-through was missed); fixed in commit 10c8949
 
 ### Pending Todos
 

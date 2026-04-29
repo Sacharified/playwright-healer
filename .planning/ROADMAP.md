@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1.3: Fix pre-existing phase1-self-test.yml test-design bugs** (INSERTED, complete 2026-04-27) - Three test-design bugs unmasked by Phase 01.2 (action now runs end-to-end so latent assertion bugs surface): (1) Scenarios 4+5 assume `$GITHUB_STEP_SUMMARY` is job-wide but it is per-step, so the bash assertion reads a different (empty) summary file than the dispatcher wrote to; (2) Scenario 1 Job B (`verify-log-mask`) checks Job A's `gh api .../logs` for raw canary, but the runner emits `with: api-key: <canary>` (line 150) and `INPUT_API-KEY: <canary>` (line 205) in the step header BEFORE the action body's `core.setSecret()` runs — TWO-JOB pattern is structurally unable to mask literal `with:` values. Pre-existing since Phase 01-06 / 01.1, never actually green on real CI (the env-var-stripping bug masked them by failing Job A early). NOT in Phase 01.2 scope.
 - [x] **Phase 2: Ingest + State Branch + Log-Only Detection** (complete 2026-04-25) - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
 - [x] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** (complete 2026-04-29) - Full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback. 13 plans + 2 gap-closure plans (03-14, 03-15) all shipped; HUMAN-UAT Tests 1+2 PASS (SC-1 PR creation; IN-01 SIGTERM propagation via Scenario 7 run 25110355292)
-- [ ] **Phase 3.1: First Heal — End-to-End Demo** (INSERTED 2026-04-29) - Phase 03 shipped infrastructure but never exercised the heal pipeline against a real LLM in real CI. Demonstrate the core concept exactly once: a broken selector test in `Sacharified/playwright-healer-test` produces a PR whose diff, when applied, makes the test pass on `fixture-ci.yml`. Skip diff-lint and post-fix validator (`fixture-ci.yml` on the PR is the truth). Switch fixture's action ref to `Sacharified/playwright-healer@main` for fast iteration. Single bug class (selectors), single fixture, single LLM call (Gemini), single success criterion.
+- [x] **Phase 3.1: First Heal — End-to-End Demo** (INSERTED 2026-04-29, complete 2026-04-29) - Phase 03 shipped infrastructure but never exercised the heal pipeline against a real LLM in real CI. Demonstrated end-to-end: PR [#1](https://github.com/Sacharified/playwright-healer-test/pull/1) opened with a Gemini-2.5-Flash-generated selector fix; fixture-ci.yml conclusion `success`; total Gemini cost $0.0382 USD. Six Phase-04 hardening items surfaced (clean-true subpath collision, free-tier model default, fix-applier scope leak, fix-applier no-force push, --3way fetch-depth warning, --force-with-lease stale-info on shallow clones).
 - [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
 - [ ] **Phase 5: Auto-Merge** - Add opt-in auto-merge for high-confidence fixes that pass all trust-chain gates
 - [ ] **Phase 6: Documentation + Release** - Ship consumer documentation, example workflows, self-test CI, and the first immutable version tag
@@ -135,7 +135,7 @@ Plans:
 Plans:
 - [x] 03.1-01-PLAN.md — Action code changes: three skip flags in config.ts + orchestrator gates + baseUrl interpolation (CRACK-1/D-02/D-03/CRACK-4)
 - [x] 03.1-02-PLAN.md — action.yml infra: git credentials step (CRACK-2) + Playwright browser install (CRACK-3) + three new skip inputs
-- [ ] 03.1-03-PLAN.md — Fixture workflow update (D-04/D-06/D-07) + GitHub Settings toggle + dispatch iteration until success
+- [x] 03.1-03-PLAN.md — Fixture workflow update (D-04/D-06/D-07) + GitHub Settings toggle + dispatch iteration until success (complete 2026-04-29; 8 iterations; PR #1 + fixture-ci.yml success; $0.0382 USD; see 03.1-03-SUMMARY.md)
 **Context**: see `03.1-CONTEXT.md` for locked decisions (D-01..D-08), open questions for researcher (Q-01..Q-03), and out-of-scope/deferred items
 
 ### Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1.3 Fix phase1-self-test.yml test-design bugs | 1/1 | Complete | 2026-04-27 |
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
-| 3.1 First Heal — End-to-End Demo (INSERTED) | 0/3 | Planning | - |
+| 3.1 First Heal — End-to-End Demo (INSERTED) | 3/3 | Complete | 2026-04-29 |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
 | 6. Documentation + Release | 0/TBD | Not started | - |
