@@ -1,9 +1,10 @@
 ---
-status: partial
+status: resolved
 phase: 03-manual-healer-selectors-waits-issue-fallback
 source: [03-VERIFICATION.md]
 started: 2026-04-27T15:15:00Z
-updated: 2026-04-28T00:00:00Z
+updated: 2026-04-29T13:05:00Z
+resolved_at: 2026-04-29T13:05:00Z
 g01_resolved_via: .planning/phases/01.2-fix-npx-tsx-env-var-stripping-in-composite-action-runtime/01.2-01-SUMMARY.md
 g01_resolved_evidence: |
   Phase 01.2 deployed `./node_modules/.bin/tsx` at both action.yml call sites + new
@@ -17,18 +18,7 @@ g01_resolved_evidence: |
 
 ## Current Test
 
-number: 2
-name: No zombie processes after startup timeout / clean app PID cleanup
-expected: |
-  Configure a `start-command` that intentionally never reaches the
-  `base-url` ready state, with `startup-timeout-seconds: 10`. After workflow
-  completes, verify no orphaned `playwright-mcp`, `chromium`, or app processes
-  remain on the runner. Specifically per IN-01: when `start-command` is
-  `npm run dev`, verify SIGTERM propagation from the npm wrapper PID (captured
-  by Step 5's `bash -c "exec ${start-command}"` spawn) reaches the underlying
-  node child. The outer `pkill` cleanup (action.yml Step 7, D-12 layer 2) is
-  the safety net.
-awaiting: user response
+[all tests resolved]
 
 ## Tests
 
@@ -112,14 +102,58 @@ by Step 5's `bash -c "exec ${start-command}"` spawn) reaches the underlying
 node child. The outer `pkill` cleanup (action.yml Step 7, D-12 layer 2) is
 the safety net.
 
+result: pass
+
+verified_at: 2026-04-29
+verified_via: phase1-self-test.yml Scenario 7 (self-test-startup-timeout-cleanup) on run 25110355292
+verified_run_url: https://github.com/Sacharified/playwright-healer/actions/runs/25110355292
+verified_evidence: |
+  Added a new self-test scenario that mimics the npm-run-dev signal-propagation shape:
+  /tmp/never-ready.sh is a bash wrapper that backgrounds a child node process
+  (`process.title = "never-ready-marker"`) and installs a TERM trap to forward
+  SIGTERM to the child. Action invoked with mode=heal, provider=ollama (no real PAT
+  or LLM call required), start-command=/tmp/never-ready.sh, startup-timeout-seconds=10.
+  
+  Live ubuntu-latest run on 2026-04-29 produced these assertions in the cleanup
+  verification step:
+  
+    Wrapper recorded: wrapper-pid=2229 child-node-pid=2231
+    Action captured app PID: 2229
+    OK: action failed as expected (Step 5 wait-for-ready hit 10s timeout)
+    OK: captured app PID 2229 is dead
+    OK: never-ready-marker child node is dead — wrapper-to-child SIGTERM propagation verified (IN-01)
+    OK: no playwright-mcp processes
+    OK: no chromium processes
+    OK: zombie-process check passed — Step 7 cleanup + IN-01 wrapper-to-child SIGTERM both functional
+  
+  All four cleanup contracts verified empirically:
+    1. Step 5 timeout fires correctly at 10s (action exits with outcome=failure)
+    2. Step 7 (`if: always()`) kills the captured wrapper PID (2229)
+    3. The wrapper's SIGTERM trap propagates to the child node PID (2231) — the IN-01
+       contract is honored under the npm-run-dev-shaped fixture
+    4. No leaked playwright-mcp / chromium processes
+  
+  All 8 jobs in run 25110355292 conclusion success — including the new Scenario 7,
+  the existing 6 scenarios + verify-log-mask Job B, and the Phase 01.2 hyphenated-input-env
+  regression job.
+
+residual_concerns:
+  - The wrapper used in Scenario 7 is a hand-rolled bash trap rather than an actual
+    `npm run dev` invocation. npm@10+ implements equivalent signal forwarding via
+    its run-script wrapper; if a future Phase 03 plan changes the signal-handling
+    contract on the action side (e.g., introducing a process-group SIGTERM via
+    `kill -TERM -<pgid>`), revisit whether the bash-trap fixture still proves IN-01
+    under the new contract — or replace the fixture with `npm run never-ready` against
+    a real `package.json` script.
+
 result: [pending]
 
 ## Summary
 
 total: 2
-passed: 1
+passed: 2
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
