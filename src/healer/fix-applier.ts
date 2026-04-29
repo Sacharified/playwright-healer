@@ -93,15 +93,22 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   );
   const commitSha = sha.stdout.trim();
 
-  // 8. Push the branch to origin with --force-with-lease for re-dispatch idempotency.
-  //    Surfaced during 03.1-03 iteration 6: every re-dispatch from the same fixture
-  //    HEAD reuses the same branch name (testSlug-shortSha), and a non-forced push
-  //    is rejected when a prior healer-bot push exists. --force-with-lease lets the
-  //    bot overwrite its own prior commits but refuses to clobber manual commits
-  //    that landed on the branch (developer safety).
+  // 8. Push the branch to origin with --force for re-dispatch idempotency.
+  //    Branches under playwright-healer/<testSlug>-<shortSha> are a bot-exclusive
+  //    namespace (fix-applier is the only thing that pushes there), so the
+  //    safety property of --force-with-lease (refuse-on-manual-commit) adds no
+  //    real value. Plain --force avoids the "stale info" rejection that
+  //    --force-with-lease produces in shallow clones where the heal branch
+  //    wasn't pre-fetched.
+  //
+  //    Iteration history:
+  //      - i6: bare `git push -u` rejected on re-dispatch (existing remote ref)
+  //      - i7: `--force-with-lease` rejected with "stale info" because the heal
+  //            branch was never fetched into the local clone
+  //      - i8: --force chosen — bot-exclusive namespace makes lease overhead unneeded
   await exec(
     'git',
-    ['push', '--force-with-lease', '-u', 'origin', branch],
+    ['push', '--force', '-u', 'origin', branch],
     { cwd: args.cwd },
   );
 
