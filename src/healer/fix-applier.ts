@@ -61,18 +61,20 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   const patchPath = path.join(tempDir, 'playwright-healer.patch');
   await writeFile(patchPath, args.diff, 'utf8');
 
-  // 4. Apply the diff with 3-way merge fallback (handles drift when branch has diverged)
+  // 4. Apply the diff with 3-way merge fallback AND stage in one atomic op.
+  //    `--index` stages exactly the files in the patch — untracked workspace
+  //    files (e.g. .healer/ from subpath-checkout consumers, package-lock.json
+  //    from setup-command npm install) are NOT swept into the commit.
+  //    Surfaced during 03.1-03 iteration 5 — fix replaces the prior `git apply --3way`
+  //    + `git add -A` pair, which had been silently committing arbitrary worktree state.
   const apply = await getExecOutput(
     'git',
-    ['apply', '--3way', patchPath],
+    ['apply', '--3way', '--index', patchPath],
     { cwd: args.cwd, ignoreReturnCode: true },
   );
   if (apply.exitCode !== 0) {
     throw new DiffApplyFailure(`git apply failed: ${apply.stderr.trim()}`);
   }
-
-  // 5. Stage all changes
-  await exec('git', ['add', '-A'], { cwd: args.cwd });
 
   // 6. Commit with SKIP_SENTINEL in the message body (PRI-06)
   //    Subject line is short; body contains the sentinel to suppress ingest loop.
