@@ -73,6 +73,10 @@ async function main(): Promise<void> {
     enableAssertionFixes:   core.getInput('enable-assertion-fixes'),
     enableSlowFixes:        core.getInput('enable-slow-fixes'),
     startupTimeoutSeconds:  core.getInput('startup-timeout-seconds'),
+    // ── Phase 03.1 demo-mode skip flags (Plan 01 added schema; this wires inputs) ──
+    skipDeterministicCheck: core.getInput('skip-deterministic-check'),
+    skipPostFixValidation:  core.getInput('skip-post-fix-validation'),
+    skipDiffLint:           core.getInput('skip-diff-lint'),
   };
 
   // ── Phase B': YAML MERGE (CFG-06/CFG-07; load-bearing for SC#4) ─────────
