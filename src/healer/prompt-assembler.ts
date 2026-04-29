@@ -22,6 +22,7 @@ export interface AssemblePromptArgs {
   traceAttachmentPath: string | null;
   testTitle: string;
   testFile: string;
+  baseUrl: string;
 }
 
 export function assemblePrompt(args: AssemblePromptArgs): string {
@@ -48,7 +49,8 @@ export function assemblePrompt(args: AssemblePromptArgs): string {
   combined = combined
     .replaceAll('{{TEST_TITLE}}', args.testTitle)
     .replaceAll('{{TEST_FILE}}', args.testFile)
-    .replaceAll('{{FORBIDDEN_PATTERNS}}', forbiddenList);
+    .replaceAll('{{FORBIDDEN_PATTERNS}}', forbiddenList)
+    .replaceAll('{{BASE_URL}}', args.baseUrl);
 
   return combined;
 }

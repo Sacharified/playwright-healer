@@ -2,7 +2,7 @@
 
 The Playwright trace.zip is missing or expired. Before proposing a fix, you MUST:
 
-1. Use the Playwright MCP browser tools to navigate to the application's base URL.
+1. Use the Playwright MCP browser tools to navigate to `{{BASE_URL}}`.
 2. Reproduce the failure path described in `{{TEST_FILE}}` (test title: `{{TEST_TITLE}}`).
 3. Inspect the DOM at the failing step to identify the correct locator.
 
