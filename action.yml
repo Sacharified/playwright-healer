@@ -154,6 +154,7 @@ runs:
       with:
         ref: ${{ inputs.commit-sha }}
         persist-credentials: false           # SEC-01
+        clean: false                         # CONTEXT D-04 fallback: preserve untracked subpath-checkout dirs (e.g. .healer/) so consumers using `actions/checkout` to a subpath then `uses: ./<subpath>` still work after this nested checkout runs
 
     # Step 2 (existing)
     - name: Install action dependencies
