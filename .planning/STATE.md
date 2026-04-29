@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Phase 03.1 discussed (CONTEXT.md drafted) — first end-to-end heal demo; ready to plan
-last_updated: "2026-04-29T17:30:00Z"
-last_activity: 2026-04-29 -- Phase 03.1 inserted (first-heal-end-to-end-demo); reality check found Phase 03 never exercised heal pipeline e2e — 0 PRs on fixture repo; CONTEXT.md drafted with 8 locked decisions
+status: executing
+stopped_at: Completed 01.3-01-PLAN.md (all 7 jobs green after Option C plan-correction; TEST-01 satisfied)
+last_updated: "2026-04-29T19:10:39.754Z"
+last_activity: 2026-04-29 -- Phase 03.1 execution started
 progress:
   total_phases: 10
-  completed_phases: 7
-  total_plans: 45
-  completed_plans: 47
-  percent: 70
+  completed_phases: 5
+  total_plans: 33
+  completed_plans: 32
+  percent: 97
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 03.1 (INSERTED 2026-04-29) — First Heal End-to-End Demo. Phase 03 shipped 15 plans of healer infrastructure but never exercised the pipeline against a real LLM in real CI (zero PRs on fixture repo; all 5 sc1-healer.yml dispatches failed at a stale diagnostic step). Phase 03.1 demonstrates the core concept exactly once: broken selector → real Gemini call → PR with real fix → fixture-ci.yml passes on the PR. CONTEXT.md drafted; ready to plan.
+**Current focus:** Phase 03.1 — first-heal-end-to-end-demo
 
 ## Current Position
 
-Phase: 03.1 (next — discussed, ready to plan)
-Plan: 0/TBD — to be created via /gsd-plan-phase 3.1
-Status: CONTEXT.md drafted with 8 locked decisions; researcher should investigate 3 open questions (Q-01 cross-repo private-action access, Q-02 orchestrator integration cracks, Q-03 prompt quality) before planning
-Last activity: 2026-04-29 — Phase 03.1 discuss-phase complete; ROADMAP + STATE updated
+Phase: 03.1 (first-heal-end-to-end-demo) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 03.1
+Last activity: 2026-04-29 -- Phase 03.1 execution started
 
 Progress: [█████████░] 78%
 
