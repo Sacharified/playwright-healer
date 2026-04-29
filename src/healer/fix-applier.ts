@@ -93,10 +93,15 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   );
   const commitSha = sha.stdout.trim();
 
-  // 8. Push the new branch to origin (fresh branch — no lease flag needed)
+  // 8. Push the branch to origin with --force-with-lease for re-dispatch idempotency.
+  //    Surfaced during 03.1-03 iteration 6: every re-dispatch from the same fixture
+  //    HEAD reuses the same branch name (testSlug-shortSha), and a non-forced push
+  //    is rejected when a prior healer-bot push exists. --force-with-lease lets the
+  //    bot overwrite its own prior commits but refuses to clobber manual commits
+  //    that landed on the branch (developer safety).
   await exec(
     'git',
-    ['push', '-u', 'origin', branch],
+    ['push', '--force-with-lease', '-u', 'origin', branch],
     { cwd: args.cwd },
   );
 
