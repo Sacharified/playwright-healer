@@ -120,6 +120,19 @@ inputs:
     required: false
     default: '120'
 
+  skip-deterministic-check:
+    description: 'Skip the deterministic-failure gate (demo mode only). Set true to let the healer attempt a fix on an always-failing test. Default: false'
+    required: false
+    default: 'false'
+  skip-post-fix-validation:
+    description: 'Skip post-fix Playwright validation reruns (demo mode only). fixture-ci.yml on the opened PR is the truth source. Default: false'
+    required: false
+    default: 'false'
+  skip-diff-lint:
+    description: 'Skip diff-lint forbidden-pattern check (demo mode only). Re-enable in Phase 04. Default: false'
+    required: false
+    default: 'false'
+
 outputs:
   dry-run-summary:
     description: |
@@ -154,6 +167,15 @@ runs:
       with:
         node-version: '24'
 
+    # Step 3.1 (NEW Phase 03.1) — Install Playwright browser binary for @playwright/mcp (CRACK-3 fix)
+    # Must use action's own node_modules/.bin/playwright (version 1.60.0-alpha matching MCP).
+    # Do NOT use system playwright or npx playwright — wrong binary version would be installed.
+    - name: Install Playwright browser (for Playwright MCP)
+      if: inputs.mode == 'heal'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: node_modules/.bin/playwright install chromium --with-deps
+
     # Step 4 (NEW) — setup-command sync (D-14 step 3)
     - name: Run setup-command (sync, heal mode)
       if: inputs.mode == 'heal' && inputs.setup-command != ''
@@ -178,6 +200,18 @@ runs:
         bash -c "exec ${{ inputs.start-command }}" &
         echo $! > /tmp/playwright-healer-app-pid
         ${{ github.action_path }}/node_modules/.bin/tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
+
+    # Step 5.1 (NEW Phase 03.1) — Configure git credentials for fix-applier push (CRACK-2 fix)
+    # persist-credentials: false (SEC-01) strips the runner's credential helper.
+    # fix-applier.ts calls 'git push' with no explicit credentials; this git config
+    # provides HTTPS credential substitution transparently — no TypeScript changes needed.
+    - name: Configure git credentials (heal mode)
+      if: inputs.mode == 'heal'
+      shell: bash
+      env:
+        HEALER_TOKEN: ${{ inputs.healer-token }}
+      run: |
+        git config --global url."https://x-access-token:${HEALER_TOKEN}@github.com/".insteadOf "https://github.com/"
 
     # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
     - name: Run playwright-healer
@@ -211,6 +245,9 @@ runs:
         INPUT_ENABLE-ASSERTION-FIXES: ${{ inputs.enable-assertion-fixes }}
         INPUT_ENABLE-SLOW-FIXES: ${{ inputs.enable-slow-fixes }}
         INPUT_STARTUP-TIMEOUT-SECONDS: ${{ inputs.startup-timeout-seconds }}
+        INPUT_SKIP-DETERMINISTIC-CHECK: ${{ inputs.skip-deterministic-check }}
+        INPUT_SKIP-POST-FIX-VALIDATION: ${{ inputs.skip-post-fix-validation }}
+        INPUT_SKIP-DIFF-LINT: ${{ inputs.skip-diff-lint }}
         # Phase 3 — orchestrator reads HEALER_DEFAULT_BRANCH for fix-applier rebase target
         HEALER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: ./node_modules/.bin/tsx src/index.ts
