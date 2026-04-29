@@ -2,9 +2,29 @@
 phase: 03-manual-healer-selectors-waits-issue-fallback
 verified: 2026-04-27T15:30:00Z
 revised: 2026-04-27T15:11:00Z
-status: human_needed
-score: 5/5 must-haves verified
+status: passed
+score: 5/5 must-haves verified + 2/2 human-verification items resolved
 overrides_applied: 0
+resolved_at: 2026-04-29T13:05:00Z
+resolved_via: |
+  Both human-verification items resolved via 03-HUMAN-UAT.md:
+    - Test 1 (End-to-end heal pass with fixture broken selector): PASS 2026-04-28
+      via Sacharified/playwright-healer-test sc1-healer.yml workflow_dispatch
+      (provider=gemini, healer-token=secrets.HEALER_PAT). The healer pipeline ran
+      end-to-end and OPENED A PR titled "[playwright-healer] Fix flaky <test title>".
+      Confirms: PAT-based PR creation works (bypasses GitHub's recursion guard);
+      env-var stripping bug is gone in real CI (Phase 01.2 fix); agent-loop →
+      fix-applier → PR-opener pipeline is functional end-to-end.
+    - Test 2 (No zombie processes after startup timeout / IN-01 SIGTERM propagation):
+      PASS 2026-04-29 via phase1-self-test.yml Scenario 7 (self-test-startup-timeout-cleanup)
+      on run 25110355292. All 8 jobs green. Concrete evidence:
+        Wrapper recorded: wrapper-pid=2229 child-node-pid=2231
+        OK: action failed as expected (Step 5 wait-for-ready hit 10s timeout)
+        OK: captured app PID 2229 is dead
+        OK: never-ready-marker child node is dead — wrapper-to-child SIGTERM propagation verified (IN-01)
+        OK: no playwright-mcp processes
+        OK: no chromium processes
+        OK: zombie-process check passed — Step 7 cleanup + IN-01 wrapper-to-child SIGTERM both functional
 re_verification:
   previous_status: gaps_found
   previous_score: 1/5
@@ -20,21 +40,15 @@ post_verification_fix:
   finding: WR-01
   closed_in: 86c8cb0
   description: "Narrowed xpath-prefix regex to /(?:locator|waitForSelector)\\s*\\(\\s*['\"`]\\/\\// per verifier's prescribed remediation. Flipped the diff-lint.test.ts assertion from toBe(true) to toBe(false) (now: 'does NOT flag getByText with // literal-text argument'). Added a guard test covering getByLabel / getByRole / getByPlaceholder / getByAltText / getByTestId with literal-text arguments starting with //. 241 tests pass (was 240 — added one guard test); typecheck clean."
-human_verification:
-  - test: "End-to-end heal pass with fixture broken selector"
-    expected: "Manually trigger the healer workflow with a fixture test containing page.locator('#wrong-id') where the element is #correct-id. Verify a PR titled '[playwright-healer] Fix flaky <test title>' appears with CI checks actually running on it — not 'all checks passed' vacuously."
-    why_human: "PR creation via PAT (vs vacuous GITHUB_TOKEN behavior) and CI triggering can only be observed in a live GitHub Actions workflow run. No unit test exercises the full pipeline against a real repo."
-  - test: "No zombie processes after startup timeout / clean cleanup of app PID"
-    expected: "Configure a start-command that never starts, with startup-timeout-seconds set to 10. After workflow completes, no orphaned playwright-mcp or app processes remain on the runner. Per IN-01: when start-command is 'npm run dev', verify SIGTERM propagation from the npm wrapper PID (captured by exec spawn) reaches the underlying node child."
-    why_human: "Process lifecycle (SIGTERM propagation through npm/pnpm wrappers, pkill targeting, PID-file cleanup race) requires a live runner. Unit tests mock app-supervisor entirely."
+human_verification: []  # all items resolved — see resolved_via above
 ---
 
 # Phase 3: Manual Healer (Selectors + Waits + Issue Fallback) Verification Report
 
 **Phase Goal:** A maintainer can manually trigger the healer workflow with a fixture dispatch payload targeting a known-broken selector or timing issue; the action reproduces the failure, proposes a fix, validates it with N reruns using `retries: 0`, opens a PR using the PAT token so CI actually fires, and routes all failure paths (startup timeout, deterministic failure, diff-lint block, no fix proposable) to structured GitHub issues
-**Verified:** 2026-04-27T15:30:00Z
-**Status:** gaps_found
-**Re-verification:** Yes — second-round verification after gap-closure plans 03-14 and 03-15
+**Verified:** 2026-04-27T15:30:00Z (second-round); resolved 2026-04-29 (HUMAN-UAT Tests 1+2 PASS)
+**Status:** passed
+**Re-verification:** Yes — second-round verification after gap-closure plans 03-14 and 03-15; HUMAN-UAT items resolved 2026-04-29 (Test 1 SC-1 PR creation; Test 2 zombie-process cleanup via Scenario 7 run 25110355292)
 
 ## Re-verification Summary
 

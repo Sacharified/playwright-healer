@@ -1,32 +1,32 @@
 ---
 phase: 01-security-scaffold-composite-packaging
 verified: 2026-04-24T17:30:00Z
-status: human_needed
-score: 4/4 must-haves verified (automated checks); 5 items require CI run
-human_verification:
-  - test: "Run phase1-self-test.yml Scenario 1 (two-job canary mask) on GitHub Actions"
-    expected: "Job B fetches Job A's finalized log via gh api and grep for 'test-canary-DO-NOT-USE-REAL-KEY' returns no matches"
-    why_human: "Cannot verify Actions runner log masking behavior locally — requires real GitHub Actions runner environment"
-  - test: "Run phase1-self-test.yml Scenario 2 (mode=banana) and confirm outcome"
-    expected: "Job 'self-test-invalid-mode' step 'Invoke with mode=banana' has outcome=failure; assertion step passes and job exits 0"
-    why_human: "Zod validation in src/index.ts is code-verified, but actual runtime failure on a GitHub Actions runner requires a live run to confirm setFailed sets exit code 1 as expected"
-  - test: "Run phase1-self-test.yml Scenario 3 (empty anthropic-api-key) and confirm outcome"
-    expected: "Job 'self-test-missing-api-key' step 'Invoke without anthropic-api-key' has outcome=failure; assertion step passes"
-    why_human: "Same as above — Zod .min(1) validation is code-verified but actual runner exit behavior requires live CI run"
-  - test: "Run phase1-self-test.yml Scenario 4 (dry-run summary redaction) and confirm summary content"
-    expected: "Job 'self-test-dry-run' exits 0; GITHUB_STEP_SUMMARY contains 'dry-run summary' marker and does NOT contain the canary string"
-    why_human: "GITHUB_STEP_SUMMARY write path requires real Actions runner; content verification cannot be simulated locally"
-  - test: "Confirm npm ci --production succeeds on ubuntu-latest with Node 24"
-    expected: "The 'Install action dependencies' step in action.yml completes without error; @anthropic-ai/claude-agent-sdk-linux-x64 native binary resolves correctly"
-    why_human: "Local macOS install confirmed working (darwin-arm64/x64 binary resolved); linux-x64 binary install on ubuntu-latest has not been exercised — STATE.md identified this as a remaining blocker"
+status: passed
+score: 4/4 must-haves verified (automated) + 5/5 human items resolved transitively via accumulated live CI runs
+resolved_at: 2026-04-29T00:00:00Z
+resolved_via: |
+  All 5 human-verification items transitively resolved by accumulated live ubuntu-latest runs:
+  - Scenario 1 two-job canary mask: PASS on Phase 01.3 run 25022284855 (Scenario 1 + verify-log-mask
+    Job B both green with Option-C `grep -v '::add-mask::'` filter)
+  - Scenario 2 mode=banana: PASS on run 25022284855 (self-test-invalid-mode green)
+  - Scenario 3 empty anthropic-api-key (now api-key per Phase 01.1): PASS on run 25022284855
+    (self-test-missing-api-key green; Zod superRefine asserted at runtime)
+  - Scenario 4 dry-run summary redaction: PASS on run 25022284855 (self-test-dry-run green —
+    note: summary redaction now verified via composite-action `dry-run-summary` output per
+    Phase 01.3 SC#1, not via $GITHUB_STEP_SUMMARY)
+  - npm ci --production on ubuntu-latest with Node 24: PASS on every run since 2026-04-25
+    (`@anthropic-ai/claude-agent-sdk-linux-x64` resolves; all 7 jobs run npm ci successfully)
+
+  This phase's UAT was also marked superseded_resolved by Phase 01.1's UAT run (2026-04-25).
+human_verification: []  # all items resolved — see resolved_via above
 ---
 
 # Phase 1: Security Scaffold + Composite Packaging Verification Report
 
 **Phase Goal:** The action's `action.yml` composite scaffold exists with the four architecturally-binding security controls locked in — `persist-credentials: false`, no `pull_request_target` trigger, scoped MCP tool list committed as the design contract, and secret masking — so no future phase can accidentally introduce these vulnerabilities.
-**Verified:** 2026-04-24T17:30:00Z
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Verified:** 2026-04-24T17:30:00Z (initial); resolved 2026-04-29 (transitively via accumulated CI runs)
+**Status:** passed
+**Re-verification:** Resolved via Phase 01.3 run 25022284855 — see frontmatter `resolved_via`
 
 ## Goal Achievement
 
