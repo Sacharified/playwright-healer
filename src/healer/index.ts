@@ -217,6 +217,7 @@ export async function run(config: Config): Promise<void> {
       testSlug,
       shortSha,
       cwd,
+      token: config.healerToken,
     });
 
     // ── Step 10: Validate the fix (VAL-01 / VAL-02 / VAL-03) ────────────

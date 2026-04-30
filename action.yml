@@ -202,19 +202,12 @@ runs:
         echo $! > /tmp/playwright-healer-app-pid
         ${{ github.action_path }}/node_modules/.bin/tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
 
-    # Step 5.1 (NEW Phase 03.1) — Configure git credentials for fix-applier push (CRACK-2 fix)
-    # persist-credentials: false (SEC-01) strips the runner's credential helper.
-    # fix-applier.ts calls 'git push' with no explicit credentials; this git config
-    # provides HTTPS credential substitution transparently — no TypeScript changes needed.
-    - name: Configure git credentials (heal mode)
-      if: inputs.mode == 'heal'
-      shell: bash
-      env:
-        HEALER_TOKEN: ${{ inputs.healer-token }}
-      run: |
-        git config --global url."https://x-access-token:${HEALER_TOKEN}@github.com/".insteadOf "https://github.com/"
-
     # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
+    # CRACK-2 fix: fix-applier.ts supplies the healer-token PAT as an inline
+    # http.extraheader via `git -c` at push time (same pattern as actions/checkout).
+    # The PAT lives only in process memory (already registered with core.setSecret)
+    # and per-invocation argv. No git config side effects, no ~/.gitconfig
+    # pollution, no .git/config artifacts.
     - name: Run playwright-healer
       id: run-playwright-healer
       shell: bash

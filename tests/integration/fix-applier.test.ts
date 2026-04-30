@@ -54,6 +54,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'completes-purchase-flow',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     });
     expect(result.branch).toBe('playwright-healer/completes-purchase-flow-abc1234');
     expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
@@ -70,6 +71,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'completes-purchase-flow',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     });
     const msg = execSync(`git log -1 --format=%B ${result.commitSha}`, { cwd: ctx.primaryWs1 }).toString();
     expect(msg).toContain('[skip-healer]');
@@ -82,6 +84,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'X',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     });
     const author = execSync(
       `git log -1 --format=%ae ${result.commitSha}`,
@@ -97,6 +100,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'X',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     });
     const authorName = execSync(
       `git log -1 --format=%an ${result.commitSha}`,
@@ -113,6 +117,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'X',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     });
     const mainShaAfter = execSync('git rev-parse main', { cwd: ctx.remoteDir }).toString().trim();
     expect(mainShaAfter).toBe(mainShaBefore);
@@ -126,6 +131,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'X',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     })).rejects.toThrow(DiffApplyFailure);
   });
 
@@ -136,6 +142,7 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
       testSlug: 'X',
       shortSha: 'abc1234',
       cwd: ctx.primaryWs1,
+      token: '',
     });
     // After applyFix, workspace is on the new branch with the fixed content
     const content = fs.readFileSync(path.join(ctx.primaryWs1, 'tests/checkout.spec.ts'), 'utf8');

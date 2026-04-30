@@ -26,6 +26,8 @@ export interface ApplyFixArgs {
   testSlug: string;        // slugified test title (lowercase, [^a-z0-9]+ → -, max 50 chars)
   shortSha: string;        // 7-char hex SHA from dispatch payload
   cwd: string;             // workspace where origin remote is configured
+  token: string;           // healer-token PAT (registered with core.setSecret at startup);
+                           //   ignored by file:// remotes — set to '' for tests
 }
 
 export interface ApplyFixResult {
@@ -93,23 +95,27 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   );
   const commitSha = sha.stdout.trim();
 
-  // 8. Push the branch to origin with --force for re-dispatch idempotency.
-  //    Branches under playwright-healer/<testSlug>-<shortSha> are a bot-exclusive
-  //    namespace (fix-applier is the only thing that pushes there), so the
-  //    safety property of --force-with-lease (refuse-on-manual-commit) adds no
-  //    real value. Plain --force avoids the "stale info" rejection that
-  //    --force-with-lease produces in shallow clones where the heal branch
-  //    wasn't pre-fetched.
+  // 8. Push the branch with credentials supplied inline via `git -c`.
+  //    Uses the same pattern as actions/checkout: an http.extraheader scoped
+  //    to this single git invocation. The PAT is base64-encoded in argv (not
+  //    plaintext); registered with core.setSecret at startup so the runner
+  //    masker redacts any leaked material. Nothing lands in ~/.gitconfig or
+  //    .git/config — the config flag is per-process and ignored for file://
+  //    remotes (which is why integration tests can pass token: '').
   //
-  //    Iteration history:
-  //      - i6: bare `git push -u` rejected on re-dispatch (existing remote ref)
-  //      - i7: `--force-with-lease` rejected with "stale info" because the heal
-  //            branch was never fetched into the local clone
-  //      - i8: --force chosen — bot-exclusive namespace makes lease overhead unneeded
+  //    Plain --force (not --force-with-lease) because playwright-healer/* is a
+  //    bot-exclusive namespace (fix-applier is the only writer). Lease's
+  //    refuse-on-manual-commit safety adds no value, and --force-with-lease
+  //    produces "stale info" rejections in shallow clones where the heal
+  //    branch wasn't pre-fetched.
+  const auth = Buffer.from(`x-access-token:${args.token}`).toString('base64');
+  const credentialFlags = args.token
+    ? ['-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`]
+    : [];
   await exec(
     'git',
-    ['push', '--force', '-u', 'origin', branch],
-    { cwd: args.cwd },
+    [...credentialFlags, 'push', '--force', 'origin', `HEAD:${branch}`],
+    { cwd: args.cwd, silent: true },
   );
 
   return { branch, commitSha };
