@@ -2,7 +2,7 @@
 //
 // Phase 01.3 SC#1: assert runDryRun publishes the rendered redacted markdown to
 // the composite-action output via core.setOutput('dryRunSummary', md). This is
-// the TS-side half of the Scenarios 4+5 fix — the action.yml outputs.dry-run-summary
+// the TS-side half of the Scenarios 4+5 fix — the action.yml outputs.dry_run_summary
 // declaration is verified independently in tests/unit/action-yml-structure.test.ts.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -49,32 +49,32 @@ beforeEach(() => {
  */
 function scriptInputs(overrides: Record<string, string> = {}): void {
   const defaults: Record<string, string> = {
-    'api-key':                          'test-canary-DO-NOT-USE-REAL-KEY',
-    'healer-token':                     'test-healer-token',
-    'github-token':                     'test-github-token',
+    'api_key':                          'test-canary-DO-NOT-USE-REAL-KEY',
+    'healer_token':                     'test-healer-token',
+    'github_token':                     'test-github-token',
     'mode':                             'dry-run',
-    'setup-command':                    '',
-    'start-command':                    '',
-    'test-command':                     '',
-    'base-url':                         '',
+    'setup_command':                    '',
+    'start_command':                    '',
+    'test_command':                     '',
+    'base_url':                         '',
     'provider':                         'anthropic',
     'model':                            '',
-    'api-endpoint':                     '',
-    'report-path':                      'test-results/results.json',
-    'flake-rate-threshold':             '0.2',
-    'flake-window-days':                '7',
-    'slow-regression-pct':              '1.5',
-    'rerun-count':                      '10',
-    'rerun-pass-rate':                  '0.9',
-    'max-budget-usd':                   '2.00',
-    'max-turns':                        '30',
-    'retention-days':                   '90',
-    'max-heals-per-test-per-week':      '3',
-    'enable-selector-fixes':            'true',
-    'enable-wait-fixes':                'true',
-    'enable-assertion-fixes':           'true',
-    'enable-slow-fixes':                'true',
-    'startup-timeout-seconds':          '120',
+    'api_endpoint':                     '',
+    'report_path':                      'test-results/results.json',
+    'flake_rate_threshold':             '0.2',
+    'flake_window_days':                '7',
+    'slow_regression_pct':              '1.5',
+    'rerun_count':                      '10',
+    'rerun_pass_rate':                  '0.9',
+    'max_budget_usd':                   '2.00',
+    'max_turns':                        '30',
+    'retention_days':                   '90',
+    'max_heals_per_test_per_week':      '3',
+    'enable_selector_fixes':            'true',
+    'enable_wait_fixes':                'true',
+    'enable_assertion_fixes':           'true',
+    'enable_slow_fixes':                'true',
+    'startup_timeout_seconds':          '120',
   };
   const map = { ...defaults, ...overrides };
   getInputMock.mockImplementation((name: string) => map[name] ?? '');
@@ -116,16 +116,16 @@ describe('runDryRun: SC#1 composite-action output', () => {
     const md = setOutputMock.mock.calls[0][1] as string;
     expect(md).toContain('# playwright-healer — dry-run summary');
     expect(md).toContain('| `provider` | anthropic |');
-    expect(md).toContain('| `api-endpoint` | (default) |');
-    expect(md).toContain('| `api-key` | (set — redacted) |');
+    expect(md).toContain('| `api_endpoint` | (default) |');
+    expect(md).toContain('| `api_key` | (set — redacted) |');
     expect(md).not.toContain('test-canary-DO-NOT-USE-REAL-KEY');
   });
 
-  it('the published markdown contains the ollama-exception cell when provider=ollama + empty api-key (Scenario 5 case)', async () => {
+  it('the published markdown contains the ollama-exception cell when provider=ollama + empty api_key (Scenario 5 case)', async () => {
     scriptInputs({
       'provider': 'ollama',
-      'api-key': '',
-      'api-endpoint': 'http://localhost:11434',
+      'api_key': '',
+      'api_endpoint': 'http://localhost:11434',
     });
     vi.resetModules();
     await import('../../src/index.js');
@@ -134,7 +134,7 @@ describe('runDryRun: SC#1 composite-action output', () => {
     expect(setOutputMock.mock.calls[0][0]).toBe('dryRunSummary');
     const md = setOutputMock.mock.calls[0][1] as string;
     expect(md).toContain('| `provider` | ollama |');
-    expect(md).toContain('| `api-endpoint` | http://localhost:11434 |');
+    expect(md).toContain('| `api_endpoint` | http://localhost:11434 |');
     expect(md).toContain('(empty — allowed for ollama)');
   });
 

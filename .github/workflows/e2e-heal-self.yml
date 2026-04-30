@@ -104,7 +104,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
-          # heal mode does its own fetch/checkout from inputs.commit-sha or HEAD
+          # heal mode does its own fetch/checkout from inputs.commit_sha or HEAD
 
       - name: Resolve dispatch SHA
         id: resolve
@@ -123,22 +123,22 @@ jobs:
           mode: heal
           provider: gemini
           model: gemini-2.5-flash
-          api-key: ${{ secrets.GEMINI_API_KEY }}
-          healer-token: ${{ secrets.HEALER_PAT }}
-          commit-sha: ${{ steps.resolve.outputs.sha }}
-          base-url: http://localhost:8080
-          setup-command: 'cd fixture && npm install && npx playwright install chromium'
-          start-command: 'cd fixture && npm run start'
-          test-command: 'cd fixture && npx playwright test'
-          max-budget-usd: '1.00'
-          max-turns: '10'
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          healer_token: ${{ secrets.HEALER_PAT }}
+          commit_sha: ${{ steps.resolve.outputs.sha }}
+          base_url: http://localhost:8080
+          setup_command: 'cd fixture && npm install && npx playwright install chromium'
+          start_command: 'cd fixture && npm run start'
+          test_command: 'cd fixture && npx playwright test'
+          max_budget_usd: '1.00'
+          max_turns: '10'
           # Demo-mode flags inherited from Phase 03.1 — fixture-ci proxy is
           # the post-heal Job 3 below, not the action's local validator.
-          skip-deterministic-check: 'true'
-          skip-post-fix-validation: 'true'
+          skip_deterministic_check: 'true'
+          skip_post_fix_validation: 'true'
           # Keep diff-lint ENABLED — it scopes the agent's diff to test files
           # only, preventing accidental modifications to action source.
-          skip-diff-lint: 'false'
+          skip_diff_lint: 'false'
 
   # ── Job 3: Verify a healer PR was opened on this repo ──
   assert-pr-opened:

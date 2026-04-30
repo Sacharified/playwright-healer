@@ -65,7 +65,7 @@ describe('getInputSchema — CFG-03 threshold fields', () => {
     }
   });
 
-  it('coerces flake-rate-threshold string "0.2" to number 0.2', () => {
+  it('coerces flake_rate_threshold string "0.2" to number 0.2', () => {
     const result = getInputSchema().safeParse({
       ...BASE_REQUIRED,
       flakeRateThreshold: '0.2',
@@ -76,7 +76,7 @@ describe('getInputSchema — CFG-03 threshold fields', () => {
     }
   });
 
-  it('fails with named field error for flake-rate-threshold: "banana"', () => {
+  it('fails with named field error for flake_rate_threshold: "banana"', () => {
     const result = getInputSchema().safeParse({
       ...BASE_REQUIRED,
       flakeRateThreshold: 'banana',
@@ -85,15 +85,15 @@ describe('getInputSchema — CFG-03 threshold fields', () => {
     if (!result.success) {
       const fieldNames = result.error.issues.map((i) => i.path.join('.'));
       const messages = result.error.issues.map((i) => i.message);
-      // The error must mention the field by name (either camelCase or hyphenated form)
+      // The error must mention the field by name (either camelCase path or snake_case input name)
       const mentionsField =
-        fieldNames.some((n) => n.includes('flakeRateThreshold') || n.includes('flake-rate-threshold')) ||
-        messages.some((m) => m.includes('flake-rate-threshold') || m.includes('flakeRateThreshold'));
+        fieldNames.some((n) => n.includes('flakeRateThreshold') || n.includes('flake_rate_threshold')) ||
+        messages.some((m) => m.includes('flake_rate_threshold') || m.includes('flakeRateThreshold'));
       expect(mentionsField).toBe(true);
     }
   });
 
-  it('fails when flake-rate-threshold "1.5" is out of 0–1 range', () => {
+  it('fails when flake_rate_threshold "1.5" is out of 0–1 range', () => {
     const result = getInputSchema().safeParse({
       ...BASE_REQUIRED,
       flakeRateThreshold: '1.5',

@@ -28,8 +28,8 @@ export function getInputSchema() {
     testCommand:     z.string().default(''),
     baseUrl:         z.string().default(''),
     apiKey:          z.string().default(''),
-    healerToken:     z.string().min(1, { message: 'healer-token is required and must be non-empty' }),
-    githubToken:     z.string().min(1, { message: 'github-token is required and must be non-empty' }),
+    healerToken:     z.string().min(1, { message: 'healer_token is required and must be non-empty' }),
+    githubToken:     z.string().min(1, { message: 'github_token is required and must be non-empty' }),
     provider:        ProviderEnum.default('anthropic'),
     model:           z.string().default(''),
     apiEndpoint:     z.string().default(''),
@@ -38,36 +38,36 @@ export function getInputSchema() {
     reportPath:             z.string().default('test-results/results.json'),
     flakeRateThreshold:     z.coerce.number()
                               .refine((v) => !isNaN(v), {
-                                message: 'flake-rate-threshold must be a valid number (e.g. 0.2)',
+                                message: 'flake_rate_threshold must be a valid number (e.g. 0.2)',
                               })
                               .min(0).max(1).default(0.2),
     flakeWindowDays:        z.coerce.number()
                               .refine((v) => !isNaN(v), {
-                                message: 'flake-window-days must be a valid integer',
+                                message: 'flake_window_days must be a valid integer',
                               })
                               .int().min(1).default(7),
     slowRegressionPct:      z.coerce.number()
                               .refine((v) => !isNaN(v), {
-                                message: 'slow-regression-pct must be a valid number (e.g. 1.5)',
+                                message: 'slow_regression_pct must be a valid number (e.g. 1.5)',
                               })
                               .min(1).default(1.5),
     rerunCount:             z.coerce.number()
-                              .refine((v) => !isNaN(v), { message: 'rerun-count must be a valid integer' })
+                              .refine((v) => !isNaN(v), { message: 'rerun_count must be a valid integer' })
                               .int().min(1).default(10),
     rerunPassRate:          z.coerce.number()
-                              .refine((v) => !isNaN(v), { message: 'rerun-pass-rate must be a valid number (e.g. 0.9)' })
+                              .refine((v) => !isNaN(v), { message: 'rerun_pass_rate must be a valid number (e.g. 0.9)' })
                               .min(0).max(1).default(0.9),
     maxBudgetUsd:           z.coerce.number()
-                              .refine((v) => !isNaN(v), { message: 'max-budget-usd must be a valid number (e.g. 2.00)' })
+                              .refine((v) => !isNaN(v), { message: 'max_budget_usd must be a valid number (e.g. 2.00)' })
                               .min(0).default(2.0),
     maxTurns:               z.coerce.number()
-                              .refine((v) => !isNaN(v), { message: 'max-turns must be a valid integer' })
+                              .refine((v) => !isNaN(v), { message: 'max_turns must be a valid integer' })
                               .int().min(1).default(30),
     retentionDays:          z.coerce.number()
-                              .refine((v) => !isNaN(v), { message: 'retention-days must be a valid integer (0 = GC disabled)' })
+                              .refine((v) => !isNaN(v), { message: 'retention_days must be a valid integer (0 = GC disabled)' })
                               .int().min(0).default(90),
     maxHealsPerTestPerWeek: z.coerce.number()
-                              .refine((v) => !isNaN(v), { message: 'max-heals-per-test-per-week must be a valid integer' })
+                              .refine((v) => !isNaN(v), { message: 'max_heals_per_test_per_week must be a valid integer' })
                               .int().min(0).default(3),
     stateBranchName:        z.string().default('playwright-healer-state'),
 
@@ -86,7 +86,7 @@ export function getInputSchema() {
     startupTimeoutSeconds: z.preprocess(
                               (v) => (v === '' ? undefined : v),
                               z.coerce.number()
-                                .refine((v) => !isNaN(v), { message: 'startup-timeout-seconds must be a valid integer' })
+                                .refine((v) => !isNaN(v), { message: 'startup_timeout_seconds must be a valid integer' })
                                 .int().min(1).default(120)
                             ),
 
@@ -101,7 +101,7 @@ export function getInputSchema() {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['apiKey'],
-        message: 'api-key is required and must be non-empty unless provider is ollama',
+        message: 'api_key is required and must be non-empty unless provider is ollama',
       });
     }
   });

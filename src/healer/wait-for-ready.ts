@@ -1,6 +1,6 @@
 // src/healer/wait-for-ready.ts
 //
-// CLI entry-point invoked by action.yml Step 5 after spawning start-command.
+// CLI entry-point invoked by action.yml Step 5 after spawning start_command.
 // Reads env vars, polls baseUrl via waitForReady (Plan 06), and on timeout files
 // an `app-startup-timeout` issue (D-09 / HEA-03) before exiting 1.
 //
@@ -47,10 +47,10 @@ export async function main(): Promise<number> {
           repo: env.GH_REPO,
           testTitle: env.TEST_TITLE,
           failureMode: 'app-startup-timeout',
-          rootCause: `App at ${env.BASE_URL} did not respond within ${env.STARTUP_TIMEOUT_SECONDS}s of start-command spawn.`,
+          rootCause: `App at ${env.BASE_URL} did not respond within ${env.STARTUP_TIMEOUT_SECONDS}s of start_command spawn.`,
           reproSteps:
-            'Check that start-command exits successfully and that base-url is correct. Verify no other process is occupying the port.',
-          suggestedManualFix: `Run \`start-command\` manually and confirm the app reaches a non-5xx status on \`${env.BASE_URL}/\`. Increase startup-timeout-seconds if the app is genuinely slow to start.`,
+            'Check that start_command exits successfully and that base_url is correct. Verify no other process is occupying the port.',
+          suggestedManualFix: `Run \`start_command\` manually and confirm the app reaches a non-5xx status on \`${env.BASE_URL}/\`. Increase startup_timeout_seconds if the app is genuinely slow to start.`,
           triggeringRunUrl: env.TRIGGERING_RUN_URL,
         });
       } catch (issueErr) {

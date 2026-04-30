@@ -40,7 +40,7 @@ describe('runGc() — STA-05', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('retention-days: 0 is a no-op (GC disabled) — zero git calls', async () => {
+  it('retention_days: 0 is a no-op (GC disabled) — zero git calls', async () => {
     // Create a file that would be deleted if GC ran
     const oldDate = new Date();
     oldDate.setDate(oldDate.getDate() - 100);
@@ -120,7 +120,7 @@ describe('runGc() — STA-05', () => {
     expect(fs.existsSync(path.join(tmpDir, 'runs', String(y)))).toBe(false);
   });
 
-  it('retention-days: 7 leaves recent files intact — no git calls at all', async () => {
+  it('retention_days: 7 leaves recent files intact — no git calls at all', async () => {
     // Create a file from yesterday — should NOT be deleted with 7-day retention
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);

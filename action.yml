@@ -6,33 +6,33 @@ inputs:
   mode:
     description: 'Run mode: ingest | heal | dry-run'
     required: true
-  commit-sha:
+  commit_sha:
     description: 'Commit SHA to checkout for heal mode (HEA-01). Defaults to empty (uses HEAD).'
     required: false
     default: ''
-  api-key:
+  api_key:
     description: 'Inference-provider API key (Anthropic, Gemini, or — for Ollama localhost — may be empty)'
     required: false
-  healer-token:
+  healer_token:
     description: 'PAT or GitHub App token required for PR creation and workflow_dispatch'
     required: true
-  github-token:
+  github_token:
     description: 'GitHub token; defaults to the built-in action token'
     required: false
     default: ${{ github.token }}
-  setup-command:
+  setup_command:
     description: 'Command to set up the application under test (healer mode)'
     required: false
     default: ''
-  start-command:
+  start_command:
     description: 'Command to start the application under test (healer mode)'
     required: false
     default: ''
-  test-command:
+  test_command:
     description: 'Command to run Playwright tests'
     required: false
     default: ''
-  base-url:
+  base_url:
     description: 'Base URL of the application under test'
     required: false
     default: ''
@@ -44,100 +44,100 @@ inputs:
     description: 'Model id (provider-specific). Empty string means use provider default.'
     required: false
     default: ''
-  api-endpoint:
+  api_endpoint:
     description: 'Custom provider endpoint. Mainly useful for self-hosted Ollama (e.g. http://localhost:11434). Empty string uses provider default.'
     required: false
     default: ''
 
-  report-path:
+  report_path:
     description: 'Glob or path to Playwright JSON report (ingest mode)'
     required: false
     default: 'test-results/results.json'
 
-  flake-rate-threshold:
+  flake_rate_threshold:
     description: 'Flake rate (0.0–1.0) above which a test is a flake candidate. Default: 0.2 (20%)'
     required: false
     default: '0.2'
 
-  flake-window-days:
+  flake_window_days:
     description: 'Rolling window in days for flake-rate and slow-regression computation. Default: 7'
     required: false
     default: '7'
 
-  slow-regression-pct:
+  slow_regression_pct:
     description: 'p95 duration growth ratio that triggers slow-regression detection. Default: 1.5 (50% slower)'
     required: false
     default: '1.5'
 
-  rerun-count:
+  rerun_count:
     description: 'Number of validation re-runs after a fix (Phase 3+). Default: 10'
     required: false
     default: '10'
 
-  rerun-pass-rate:
+  rerun_pass_rate:
     description: 'Required pass rate (0.0–1.0) for a fix to be accepted (Phase 3+). Default: 0.9'
     required: false
     default: '0.9'
 
-  max-budget-usd:
+  max_budget_usd:
     description: 'Max USD per healing run (Phase 3+). Default: 2.00'
     required: false
     default: '2.00'
 
-  max-turns:
+  max_turns:
     description: 'Max agent turns per healing run (Phase 3+). Default: 30'
     required: false
     default: '30'
 
-  retention-days:
+  retention_days:
     description: 'Days to retain state branch records before GC. Default: 90. Set to 0 to disable GC.'
     required: false
     default: '90'
 
-  max-heals-per-test-per-week:
+  max_heals_per_test_per_week:
     description: 'Per-test heal attempt cap per 7-day window (circuit breaker). Default: 3'
     required: false
     default: '3'
 
-  enable-selector-fixes:
+  enable_selector_fixes:
     description: 'Enable selector-class fixes (Phase 3+). Default: true'
     required: false
     default: 'true'
-  enable-wait-fixes:
+  enable_wait_fixes:
     description: 'Enable wait/timing-class fixes (Phase 3+). Default: true'
     required: false
     default: 'true'
-  enable-assertion-fixes:
+  enable_assertion_fixes:
     description: 'Enable assertion-class fixes (Phase 4+). Default: true (toggle-only in Phase 3)'
     required: false
     default: 'true'
-  enable-slow-fixes:
+  enable_slow_fixes:
     description: 'Enable slow-test-class fixes (Phase 4+). Default: true (toggle-only in Phase 3)'
     required: false
     default: 'true'
-  startup-timeout-seconds:
-    description: 'Max seconds to wait for start-command app to become ready (heal mode). Default: 120'
+  startup_timeout_seconds:
+    description: 'Max seconds to wait for start_command app to become ready (heal mode). Default: 120'
     required: false
     default: '120'
 
-  skip-deterministic-check:
+  skip_deterministic_check:
     description: 'Skip the deterministic-failure gate (demo mode only). Set true to let the healer attempt a fix on an always-failing test. Default: false'
     required: false
     default: 'false'
-  skip-post-fix-validation:
+  skip_post_fix_validation:
     description: 'Skip post-fix Playwright validation reruns (demo mode only). fixture-ci.yml on the opened PR is the truth source. Default: false'
     required: false
     default: 'false'
-  skip-diff-lint:
+  skip_diff_lint:
     description: 'Skip diff-lint forbidden-pattern check (demo mode only). Re-enable in Phase 04. Default: false'
     required: false
     default: 'false'
 
 outputs:
-  dry-run-summary:
+  dry_run_summary:
     description: |
       Rendered redacted dry-run markdown summary. Populated only when mode=dry-run.
-      Self-redacted via core.setSecret on api-key/healer-token/github-token before
+      Self-redacted via core.setSecret on api_key/healer_token/github_token before
       emission — safe to log. Empty for ingest/heal modes.
 
       Diagnostic / test-only — content not stable across versions. Do not parse from
@@ -149,10 +149,10 @@ runs:
   steps:
     # Step 1 (NEW) — Checkout dispatch SHA, heal-only (HEA-01)
     - name: Checkout dispatch SHA (heal mode)
-      if: inputs.mode == 'heal' && inputs.commit-sha != ''
+      if: inputs.mode == 'heal' && inputs.commit_sha != ''
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified SHA
       with:
-        ref: ${{ inputs.commit-sha }}
+        ref: ${{ inputs.commit_sha }}
         persist-credentials: false           # SEC-01
         clean: false                         # CONTEXT D-04 fallback: preserve untracked subpath-checkout dirs (e.g. .healer/) so consumers using `actions/checkout` to a subpath then `uses: ./<subpath>` still work after this nested checkout runs
 
@@ -177,33 +177,33 @@ runs:
       working-directory: ${{ github.action_path }}
       run: node_modules/.bin/playwright install chromium --with-deps
 
-    # Step 4 (NEW) — setup-command sync (D-14 step 3)
-    - name: Run setup-command (sync, heal mode)
-      if: inputs.mode == 'heal' && inputs.setup-command != ''
+    # Step 4 (NEW) — setup_command sync (D-14 step 3)
+    - name: Run setup_command (sync, heal mode)
+      if: inputs.mode == 'heal' && inputs.setup_command != ''
       shell: bash
-      run: ${{ inputs.setup-command }}
+      run: ${{ inputs.setup_command }}
 
-    # Step 5 (NEW) — spawn start-command + wait for ready (D-14 step 4 + HEA-02 + HEA-03)
-    - name: Spawn start-command + wait for ready (heal mode)
-      if: inputs.mode == 'heal' && inputs.start-command != ''
+    # Step 5 (NEW) — spawn start_command + wait for ready (D-14 step 4 + HEA-02 + HEA-03)
+    - name: Spawn start_command + wait for ready (heal mode)
+      if: inputs.mode == 'heal' && inputs.start_command != ''
       shell: bash
       # No working-directory — composite default is github.workspace (consumer checkout).
-      # start-command (e.g. npm run dev) runs from the consumer repo, not the action dir.
+      # start_command (e.g. npm run dev) runs from the consumer repo, not the action dir.
       env:
-        BASE_URL: ${{ inputs.base-url }}
-        STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup-timeout-seconds }}
-        HEALER_TOKEN: ${{ inputs.healer-token }}
+        BASE_URL: ${{ inputs.base_url }}
+        STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup_timeout_seconds }}
+        HEALER_TOKEN: ${{ inputs.healer_token }}
         GH_OWNER: ${{ github.repository_owner }}
         GH_REPO: ${{ github.event.repository.name }}
         TEST_TITLE: ${{ github.event.inputs.testTitle }}
         TRIGGERING_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        bash -c "exec ${{ inputs.start-command }}" &
+        bash -c "exec ${{ inputs.start_command }}" &
         echo $! > /tmp/playwright-healer-app-pid
         ${{ github.action_path }}/node_modules/.bin/tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
 
     # Step 6 (existing, env extended) — universal entry: ingest/heal/dry-run
-    # CRACK-2 fix: fix-applier.ts supplies the healer-token PAT as an inline
+    # CRACK-2 fix: fix-applier.ts supplies the healer_token PAT as an inline
     # http.extraheader via `git -c` at push time (same pattern as actions/checkout).
     # The PAT lives only in process memory (already registered with core.setSecret)
     # and per-invocation argv. No git config side effects, no ~/.gitconfig
@@ -214,34 +214,34 @@ runs:
       working-directory: ${{ github.action_path }}
       env:
         INPUT_MODE: ${{ inputs.mode }}
-        INPUT_API-KEY: ${{ inputs.api-key }}
-        INPUT_HEALER-TOKEN: ${{ inputs.healer-token }}
-        INPUT_GITHUB-TOKEN: ${{ inputs.github-token }}
-        INPUT_SETUP-COMMAND: ${{ inputs.setup-command }}
-        INPUT_START-COMMAND: ${{ inputs.start-command }}
-        INPUT_TEST-COMMAND: ${{ inputs.test-command }}
-        INPUT_BASE-URL: ${{ inputs.base-url }}
+        INPUT_API_KEY: ${{ inputs.api_key }}
+        INPUT_HEALER_TOKEN: ${{ inputs.healer_token }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_SETUP_COMMAND: ${{ inputs.setup_command }}
+        INPUT_START_COMMAND: ${{ inputs.start_command }}
+        INPUT_TEST_COMMAND: ${{ inputs.test_command }}
+        INPUT_BASE_URL: ${{ inputs.base_url }}
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
-        INPUT_API-ENDPOINT: ${{ inputs.api-endpoint }}
-        INPUT_REPORT-PATH: ${{ inputs.report-path }}
-        INPUT_FLAKE-RATE-THRESHOLD: ${{ inputs.flake-rate-threshold }}
-        INPUT_FLAKE-WINDOW-DAYS: ${{ inputs.flake-window-days }}
-        INPUT_SLOW-REGRESSION-PCT: ${{ inputs.slow-regression-pct }}
-        INPUT_RERUN-COUNT: ${{ inputs.rerun-count }}
-        INPUT_RERUN-PASS-RATE: ${{ inputs.rerun-pass-rate }}
-        INPUT_MAX-BUDGET-USD: ${{ inputs.max-budget-usd }}
-        INPUT_MAX-TURNS: ${{ inputs.max-turns }}
-        INPUT_RETENTION-DAYS: ${{ inputs.retention-days }}
-        INPUT_MAX-HEALS-PER-TEST-PER-WEEK: ${{ inputs.max-heals-per-test-per-week }}
-        INPUT_ENABLE-SELECTOR-FIXES: ${{ inputs.enable-selector-fixes }}
-        INPUT_ENABLE-WAIT-FIXES: ${{ inputs.enable-wait-fixes }}
-        INPUT_ENABLE-ASSERTION-FIXES: ${{ inputs.enable-assertion-fixes }}
-        INPUT_ENABLE-SLOW-FIXES: ${{ inputs.enable-slow-fixes }}
-        INPUT_STARTUP-TIMEOUT-SECONDS: ${{ inputs.startup-timeout-seconds }}
-        INPUT_SKIP-DETERMINISTIC-CHECK: ${{ inputs.skip-deterministic-check }}
-        INPUT_SKIP-POST-FIX-VALIDATION: ${{ inputs.skip-post-fix-validation }}
-        INPUT_SKIP-DIFF-LINT: ${{ inputs.skip-diff-lint }}
+        INPUT_API_ENDPOINT: ${{ inputs.api_endpoint }}
+        INPUT_REPORT_PATH: ${{ inputs.report_path }}
+        INPUT_FLAKE_RATE_THRESHOLD: ${{ inputs.flake_rate_threshold }}
+        INPUT_FLAKE_WINDOW_DAYS: ${{ inputs.flake_window_days }}
+        INPUT_SLOW_REGRESSION_PCT: ${{ inputs.slow_regression_pct }}
+        INPUT_RERUN_COUNT: ${{ inputs.rerun_count }}
+        INPUT_RERUN_PASS_RATE: ${{ inputs.rerun_pass_rate }}
+        INPUT_MAX_BUDGET_USD: ${{ inputs.max_budget_usd }}
+        INPUT_MAX_TURNS: ${{ inputs.max_turns }}
+        INPUT_RETENTION_DAYS: ${{ inputs.retention_days }}
+        INPUT_MAX_HEALS_PER_TEST_PER_WEEK: ${{ inputs.max_heals_per_test_per_week }}
+        INPUT_ENABLE_SELECTOR_FIXES: ${{ inputs.enable_selector_fixes }}
+        INPUT_ENABLE_WAIT_FIXES: ${{ inputs.enable_wait_fixes }}
+        INPUT_ENABLE_ASSERTION_FIXES: ${{ inputs.enable_assertion_fixes }}
+        INPUT_ENABLE_SLOW_FIXES: ${{ inputs.enable_slow_fixes }}
+        INPUT_STARTUP_TIMEOUT_SECONDS: ${{ inputs.startup_timeout_seconds }}
+        INPUT_SKIP_DETERMINISTIC_CHECK: ${{ inputs.skip_deterministic_check }}
+        INPUT_SKIP_POST_FIX_VALIDATION: ${{ inputs.skip_post_fix_validation }}
+        INPUT_SKIP_DIFF_LINT: ${{ inputs.skip_diff_lint }}
         # Phase 3 — orchestrator reads HEALER_DEFAULT_BRANCH for fix-applier rebase target
         HEALER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: ./node_modules/.bin/tsx src/index.ts

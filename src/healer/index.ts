@@ -2,7 +2,7 @@
 //
 // Phase 3 heal pipeline orchestrator (CONTEXT D-13 single-process design).
 // Eleven numbered steps. Six failure modes route to issue-fallback per D-09;
-// success path opens a PR via the healer-token PAT (D-20 / SC-1).
+// success path opens a PR via the healer_token PAT (D-20 / SC-1).
 //
 // HEA-06 inner cleanup: try/finally calls appSupervisor.stop() on every exit.
 // Outer cleanup is action.yml post-step (Plan 14, D-12 layer 2).
@@ -171,7 +171,7 @@ export async function run(config: Config): Promise<void> {
           triggeringRunUrl,
           failureMode: 'agent-budget-exhausted',
           rootCause: `Agent exceeded budget ceiling: ${err.message}. Spent $${burnUsd.toFixed(4)} across ${burnTurns} turn(s) before exhaustion.`,
-          reproSteps: 'Increase max-budget-usd or max-turns in workflow inputs and re-dispatch.',
+          reproSteps: 'Increase max_budget_usd or max_turns in workflow inputs and re-dispatch.',
           suggestedManualFix: `If recurring, inspect the agent transcript in the run log for tool-loop patterns; consider tightening the fix-class hint. Burn rate before exhaustion: $${burnUsd.toFixed(4)} / ${burnTurns} turn(s).`,
         });
         return;

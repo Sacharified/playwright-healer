@@ -92,39 +92,38 @@ cat > "$EVENT_JSON" <<EOF
 EOF
 
 # ── Set INPUT_* env vars ─────────────────────────────────────────────────
-# Hyphenated env names need `export` (bash inline KEY=val rejects hyphens).
-# Only override the inputs that don't have safe Zod defaults; everything else
-# falls through to src/shared/config.ts defaults.
-export "INPUT_MODE=heal"
-export "INPUT_PROVIDER=${PROVIDER:-gemini}"
-export "INPUT_MODEL=${MODEL:-gemini-2.5-flash}"
-export "INPUT_API-KEY=$GEMINI_API_KEY"
-export "INPUT_HEALER-TOKEN=$HEALER_PAT"
-export "INPUT_GITHUB-TOKEN=$HEALER_PAT"
-export "INPUT_BASE-URL=http://localhost:$FIXTURE_PORT"
-export "INPUT_TEST-COMMAND=cd fixture && npx playwright test"
-export "INPUT_MAX-BUDGET-USD=1.00"
-export "INPUT_MAX-TURNS=10"
-export "INPUT_SKIP-DETERMINISTIC-CHECK=true"
-export "INPUT_SKIP-POST-FIX-VALIDATION=true"
-export "INPUT_SKIP-DIFF-LINT=false"
+# Action input names are snake_case so INPUT_* env vars are clean POSIX
+# identifiers. Only override the inputs that don't have safe Zod defaults;
+# everything else falls through to src/shared/config.ts defaults.
+export INPUT_MODE=heal
+export INPUT_PROVIDER="${PROVIDER:-gemini}"
+export INPUT_MODEL="${MODEL:-gemini-2.5-flash}"
+export INPUT_API_KEY="$GEMINI_API_KEY"
+export INPUT_HEALER_TOKEN="$HEALER_PAT"
+export INPUT_GITHUB_TOKEN="$HEALER_PAT"
+export INPUT_BASE_URL="http://localhost:$FIXTURE_PORT"
+export INPUT_TEST_COMMAND="cd fixture && npx playwright test"
+export INPUT_MAX_BUDGET_USD=1.00
+export INPUT_MAX_TURNS=10
+export INPUT_SKIP_DETERMINISTIC_CHECK=true
+export INPUT_SKIP_POST_FIX_VALIDATION=true
+export INPUT_SKIP_DIFF_LINT=false
 
 # GitHub Actions context vars (read by @actions/github → context.payload, etc.)
-export "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
-export "GITHUB_REPOSITORY_OWNER=$GITHUB_REPOSITORY_OWNER"
-export "GITHUB_EVENT_NAME=workflow_dispatch"
-export "GITHUB_EVENT_PATH=$EVENT_JSON"
-export "GITHUB_SERVER_URL=https://github.com"
-export "GITHUB_RUN_ID=0"
-export "GITHUB_ACTOR=${USER:-local}"
+export GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
+export GITHUB_REPOSITORY_OWNER="$GITHUB_REPOSITORY_OWNER"
+export GITHUB_EVENT_NAME=workflow_dispatch
+export GITHUB_EVENT_PATH="$EVENT_JSON"
+export GITHUB_SERVER_URL=https://github.com
+export GITHUB_RUN_ID=0
+export GITHUB_ACTOR="${USER:-local}"
 
 # Heal mode reads HEALER_DEFAULT_BRANCH directly (src/healer/index.ts:113)
-export "HEALER_DEFAULT_BRANCH=main"
-export "RUNNER_TEMP=${TMPDIR:-/tmp}"
+export HEALER_DEFAULT_BRANCH=main
+export RUNNER_TEMP="${TMPDIR:-/tmp}"
 
 # ── Run the action's TS entry point ──────────────────────────────────────
-# Path-resolved tsx (not `npx tsx`) — npx → tsx → node spawn chain strips
-# hyphenated env vars (Phase 01.2 fix; see CLAUDE.md).
+# Use the action's own pinned tsx — same spawn shape as action.yml Step 6.
 echo "→ heal mode against $GITHUB_REPOSITORY @ ${HEAD_SHA:0:7}"
 echo "→ provider=${PROVIDER:-gemini} model=${MODEL:-gemini-2.5-flash}"
 echo "→ pushes branch + opens PR on $GITHUB_REPOSITORY on success"

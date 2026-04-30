@@ -87,6 +87,6 @@ describe('wait-for-ready CLI — HEA-03', () => {
     await main();
     const args = mockOpenIssue.mock.calls[0][0];
     expect(args.rootCause).toMatch(/did not respond/);
-    expect(args.suggestedManualFix).toMatch(/start-command/);
+    expect(args.suggestedManualFix).toMatch(/start_command/);
   });
 });

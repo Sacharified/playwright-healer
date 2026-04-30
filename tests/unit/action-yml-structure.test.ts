@@ -40,24 +40,24 @@ describe('action.yml structure (Phase 01.3 SC#1 bridge)', () => {
     expect(() => loadActionYml()).not.toThrow();
   });
 
-  it('declares a top-level outputs.dry-run-summary block', () => {
+  it('declares a top-level outputs.dry_run_summary block', () => {
     const yml = loadActionYml();
     expect(yml.outputs).toBeDefined();
-    expect(yml.outputs!['dry-run-summary']).toBeDefined();
-    expect(yml.outputs!['dry-run-summary'].description).toBeTypeOf('string');
-    expect(yml.outputs!['dry-run-summary'].value).toBeTypeOf('string');
+    expect(yml.outputs!['dry_run_summary']).toBeDefined();
+    expect(yml.outputs!['dry_run_summary'].description).toBeTypeOf('string');
+    expect(yml.outputs!['dry_run_summary'].value).toBeTypeOf('string');
   });
 
-  it('outputs.dry-run-summary.description contains the diagnostic-only disclaimer (T-02 mitigation)', () => {
+  it('outputs.dry_run_summary.description contains the diagnostic-only disclaimer (T-02 mitigation)', () => {
     const yml = loadActionYml();
-    const desc = yml.outputs!['dry-run-summary'].description;
+    const desc = yml.outputs!['dry_run_summary'].description;
     expect(desc.toLowerCase()).toContain('diagnostic');
     expect(desc.toLowerCase()).toContain('not stable across versions');
   });
 
-  it('outputs.dry-run-summary.value references steps.run-playwright-healer.outputs.dryRunSummary verbatim', () => {
+  it('outputs.dry_run_summary.value references steps.run-playwright-healer.outputs.dryRunSummary verbatim', () => {
     const yml = loadActionYml();
-    const value = yml.outputs!['dry-run-summary'].value;
+    const value = yml.outputs!['dry_run_summary'].value;
     expect(value.trim()).toBe('${{ steps.run-playwright-healer.outputs.dryRunSummary }}');
   });
 
@@ -75,10 +75,10 @@ describe('action.yml structure (Phase 01.3 SC#1 bridge)', () => {
     expect(step6!.run).toContain('./node_modules/.bin/tsx src/index.ts');
   });
 
-  it('the slug in outputs.dry-run-summary.value matches the id on Step 6 (RESEARCH Pitfall 2 guard)', () => {
+  it('the slug in outputs.dry_run_summary.value matches the id on Step 6 (RESEARCH Pitfall 2 guard)', () => {
     const yml = loadActionYml();
     // Extract slug from the value expression.
-    const value = yml.outputs!['dry-run-summary'].value;
+    const value = yml.outputs!['dry_run_summary'].value;
     const match = value.match(/steps\.([a-zA-Z0-9-]+)\.outputs\./);
     expect(match).not.toBeNull();
     const slugInValue = match![1];

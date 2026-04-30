@@ -1,7 +1,7 @@
 // src/healer/pr-writer.ts
 //
 // PRI-01 / PRI-02 / PRI-06 / VAL-05 / D-20 / SC-1: open the healer PR via
-// @octokit/rest authenticated with the healer-token PAT. Using @actions/github
+// @octokit/rest authenticated with the healer_token PAT. Using @actions/github
 // is FORBIDDEN here because that path is GITHUB_TOKEN-only — bot-authored PRs
 // via GITHUB_TOKEN do not trigger downstream CI (Pitfall 1), making SC-1 vacuous.
 

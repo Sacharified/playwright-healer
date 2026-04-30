@@ -29,8 +29,8 @@ jobs:
       # ──────────────────────────────────────────────────────────────────
       # Phase 01.3 SC#2 (option a): pre-register the canary with the runner
       # masker BEFORE `uses: ./` so the masker is engaged when the runner
-      # emits the action's step header (which contains `with: api-key:
-      # <canary>` AND `INPUT_API-KEY: <canary>`). Masking is non-retroactive
+      # emits the action's step header (which contains `with: api_key:
+      # <canary>` AND `INPUT_API_KEY: <canary>`). Masking is non-retroactive
       # (RESEARCH §Pattern 4 / Pitfall 4) — registration MUST precede the
       # log line that would otherwise emit the secret.
       #
@@ -39,8 +39,8 @@ jobs:
       #
       # What this does NOT directly verify: that src/index.ts calls
       # core.setSecret() correctly. That contract is verified by Scenario 4,
-      # which greps the dispatcher-emitted dry-run-summary output for canary
-      # absence (the markdown table redacts api-key independently of any
+      # which greps the dispatcher-emitted dry_run_summary output for canary
+      # absence (the markdown table redacts api_key independently of any
       # upstream masking).
       # ──────────────────────────────────────────────────────────────────
       - name: Pre-register canary with runner masker
@@ -52,9 +52,9 @@ jobs:
         with:
           mode: dry-run
           provider: anthropic
-          api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
-          healer-token: 'test-canary-healer-token'
-          github-token: ${{ github.token }}
+          api_key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          healer_token: 'test-canary-healer-token'
+          github_token: ${{ github.token }}
 
   verify-log-mask:
     name: 'Verify canary was masked in previous job log'
@@ -91,7 +91,7 @@ jobs:
           # Filter `::add-mask::` lines from the haystack before grepping for
           # the canary. By construction those lines contain the literal. Any
           # OTHER leak (from the `with:` step header on `uses: ./`, from an
-          # INPUT_API-KEY env-block dump, from the action body output) still
+          # INPUT_API_KEY env-block dump, from the action body output) still
           # contains the canary on a non-`::add-mask::` line and trips the gate.
           grep -v '::add-mask::' job-a.log > job-a-filtered.log
           if grep -q 'test-canary-DO-NOT-USE-REAL-KEY' job-a-filtered.log; then
@@ -121,9 +121,9 @@ jobs:
         with:
           mode: banana
           provider: anthropic
-          api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
-          healer-token: 'test-canary-healer-token'
-          github-token: ${{ github.token }}
+          api_key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          healer_token: 'test-canary-healer-token'
+          github_token: ${{ github.token }}
 
       - name: Assert the invocation failed (exit code 1)
         shell: bash
@@ -136,9 +136,9 @@ jobs:
           echo "OK: invalid mode produced failure outcome"
 
   # ──────────────────────────────────────────────────────────────────
-  # SCENARIO 3 (CFG-02 / SC#4) — Missing/empty api-key fails cleanly when
+  # SCENARIO 3 (CFG-02 / SC#4) — Missing/empty api_key fails cleanly when
   # provider is anthropic (Zod superRefine). This is the anthropic side of
-  # the per-provider api-key enforcement pair with Scenario 5.
+  # the per-provider api_key enforcement pair with Scenario 5.
   # ──────────────────────────────────────────────────────────────────
 
   self-test-missing-api-key:
@@ -149,31 +149,31 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Invoke with empty api-key + provider=anthropic (expected to fail)
+      - name: Invoke with empty api_key + provider=anthropic (expected to fail)
         id: run
         continue-on-error: true
         uses: ./
         with:
           mode: dry-run
           provider: anthropic
-          api-key: ''
-          healer-token: 'test-canary-healer-token'
-          github-token: ${{ github.token }}
+          api_key: ''
+          healer_token: 'test-canary-healer-token'
+          github_token: ${{ github.token }}
 
       - name: Assert failure
         shell: bash
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "failure" ]; then
-            echo "::error::Expected failure for empty api-key with provider=anthropic, got outcome=${{ steps.run.outcome }}"
+            echo "::error::Expected failure for empty api_key with provider=anthropic, got outcome=${{ steps.run.outcome }}"
             exit 1
           fi
-          echo "OK: empty api-key + provider=anthropic produced failure outcome"
+          echo "OK: empty api_key + provider=anthropic produced failure outcome"
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 4 (CFG-05 happy path / TEST-01) — dry-run exits 0 and the
-  # composite-action output `dry-run-summary` carries a redacted markdown
-  # table with no canary leak. Reads from steps.run.outputs.dry-run-summary
+  # composite-action output `dry_run_summary` carries a redacted markdown
+  # table with no canary leak. Reads from steps.run.outputs.dry_run_summary
   # rather than $GITHUB_STEP_SUMMARY (which is per-step — Phase 01.3 SC#1).
   # Defense-in-depth on top of Scenario 1's log grep: this scenario verifies
   # the dispatcher's setSecret-driven redaction in the markdown table; that
@@ -195,15 +195,15 @@ jobs:
           mode: dry-run
           provider: anthropic
           model: ''
-          api-endpoint: ''
-          api-key: 'test-canary-DO-NOT-USE-REAL-KEY'
-          healer-token: 'test-canary-healer-token'
-          github-token: ${{ github.token }}
+          api_endpoint: ''
+          api_key: 'test-canary-DO-NOT-USE-REAL-KEY'
+          healer_token: 'test-canary-healer-token'
+          github_token: ${{ github.token }}
 
-      - name: Assert success and dry-run-summary output redacts canary
+      - name: Assert success and dry_run_summary output redacts canary
         shell: bash
         env:
-          SUMMARY: ${{ steps.run.outputs.dry-run-summary }}
+          SUMMARY: ${{ steps.run.outputs.dry_run_summary }}
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "success" ]; then
@@ -211,11 +211,11 @@ jobs:
             exit 1
           fi
           if [ -z "$SUMMARY" ]; then
-            echo "::error::dry-run-summary output was empty — runDryRun helper regression OR composite-action output mapping broken (check action.yml outputs.dry-run-summary.value AND id: run-playwright-healer on Step 6)"
+            echo "::error::dry_run_summary output was empty — runDryRun helper regression OR composite-action output mapping broken (check action.yml outputs.dry_run_summary.value AND id: run-playwright-healer on Step 6)"
             exit 1
           fi
           if echo "$SUMMARY" | grep -q 'test-canary-DO-NOT-USE-REAL-KEY'; then
-            echo "::error::Canary appeared in dry-run-summary output — redaction FAILED"
+            echo "::error::Canary appeared in dry_run_summary output — redaction FAILED"
             exit 1
           fi
           if ! echo "$SUMMARY" | grep -q 'dry-run summary'; then
@@ -230,11 +230,11 @@ jobs:
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 5 (01.1 — Ollama empty-key dry-run path / TEST-01) — load-
-  # bearing test for the `required: true` removal on api-key. With
-  # provider=ollama, empty api-key MUST NOT trigger the Zod superRefine
+  # bearing test for the `required: true` removal on api_key. With
+  # provider=ollama, empty api_key MUST NOT trigger the Zod superRefine
   # issue, and the dispatcher MUST exit 0. Also proves the new provider/
-  # api-endpoint inputs reach the dry-run summary output. Reads from
-  # steps.run.outputs.dry-run-summary rather than $GITHUB_STEP_SUMMARY
+  # api_endpoint inputs reach the dry-run summary output. Reads from
+  # steps.run.outputs.dry_run_summary rather than $GITHUB_STEP_SUMMARY
   # (per Phase 01.3 SC#1 fix).
   # ──────────────────────────────────────────────────────────────────
 
@@ -246,88 +246,48 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Invoke with provider=ollama, empty api-key, localhost endpoint
+      - name: Invoke with provider=ollama, empty api_key, localhost endpoint
         id: run
         uses: ./
         with:
           mode: dry-run
           provider: ollama
-          api-key: ''
-          api-endpoint: 'http://localhost:11434'
-          healer-token: 'test-canary-healer-token'
-          github-token: ${{ github.token }}
+          api_key: ''
+          api_endpoint: 'http://localhost:11434'
+          healer_token: 'test-canary-healer-token'
+          github_token: ${{ github.token }}
 
-      - name: Assert success + dry-run-summary output reflects ollama provider + endpoint
+      - name: Assert success + dry_run_summary output reflects ollama provider + endpoint
         shell: bash
         env:
-          SUMMARY: ${{ steps.run.outputs.dry-run-summary }}
+          SUMMARY: ${{ steps.run.outputs.dry_run_summary }}
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "success" ]; then
-            echo "::error::Expected success for provider=ollama + empty api-key, got outcome=${{ steps.run.outcome }}"
+            echo "::error::Expected success for provider=ollama + empty api_key, got outcome=${{ steps.run.outcome }}"
             exit 1
           fi
           if [ -z "$SUMMARY" ]; then
-            echo "::error::dry-run-summary output was empty"
+            echo "::error::dry_run_summary output was empty"
             exit 1
           fi
           if ! echo "$SUMMARY" | grep -q '| `provider` | ollama |'; then
             echo "::error::Expected 'provider | ollama' row in output"
             exit 1
           fi
-          if ! echo "$SUMMARY" | grep -q '| `api-endpoint` | http://localhost:11434 |'; then
-            echo "::error::Expected api-endpoint row with localhost:11434 in output"
+          if ! echo "$SUMMARY" | grep -q '| `api_endpoint` | http://localhost:11434 |'; then
+            echo "::error::Expected api_endpoint row with localhost:11434 in output"
             exit 1
           fi
           if ! echo "$SUMMARY" | grep -q '(empty — allowed for ollama)'; then
-            echo "::error::Expected 'empty — allowed for ollama' api-key cell — dispatcher did not detect the ollama-exception path"
+            echo "::error::Expected 'empty — allowed for ollama' api_key cell — dispatcher did not detect the ollama-exception path"
             exit 1
           fi
           echo "OK: ollama empty-key dry-run path verified via composite-action output"
 
   # ──────────────────────────────────────────────────────────────────
-  # SCENARIO 6 (Phase 01.2 — npx-tsx env-var stripping regression test).
-  # Asserts the action's chosen spawn shape (./node_modules/.bin/tsx) preserves
-  # a hyphenated INPUT_* env var. Pre-existing bug: `npx tsx` strips env vars
-  # whose names contain hyphens, so every kebab-cased input arrived as empty
-  # at the spawned Node process. See 03-HUMAN-UAT.md G-01 + 01.2-CONTEXT.md.
-  #
-  # This job is intentionally minimal — it does NOT invoke `uses: ./` (which
-  # would trigger real-mode validation noise). It runs `npm ci --production`
-  # in the action dir and then exercises the spawn one-liner with a hyphenated
-  # env var, asserting the var arrives at the Node process intact.
-  # ──────────────────────────────────────────────────────────────────
-
-  self-test-hyphenated-input-env:
-    name: 'Self-test — hyphenated INPUT_* env var survives action spawn shape'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Set up Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
-        with:
-          node-version: '24'
-
-      - name: Install action runtime deps (matches action.yml Step 2)
-        shell: bash
-        run: npm ci --production
-
-      - name: Assert hyphenated INPUT_* survives ./node_modules/.bin/tsx spawn
-        shell: bash
-        env:
-          INPUT_FOO-BAR: hello
-        run: |
-          set -euo pipefail
-          # Use the same spawn shape that action.yml Step 6 now uses.
-          # If this fails, the npx-tsx fix has regressed.
-          ./node_modules/.bin/tsx -e "if (process.env['INPUT_FOO-BAR'] !== 'hello') { console.error('::error::INPUT_FOO-BAR was stripped or mutated. Got:', JSON.stringify(process.env['INPUT_FOO-BAR'])); process.exit(1); } console.log('OK: INPUT_FOO-BAR survived spawn (length=' + process.env['INPUT_FOO-BAR'].length + ')');"
-
-  # ──────────────────────────────────────────────────────────────────
   # SCENARIO 7 (Phase 03 UAT Test 2 / IN-01 startup-timeout cleanup) —
-  # heal-mode start-command intentionally never opens base-url; verify
+  # heal-mode start_command intentionally never opens base_url; verify
   # Step 5 (wait-for-ready.ts) times out at 10s, Step 7 (if: always())
   # cleanup kills both the captured wrapper PID and its child node PID.
   #
@@ -339,7 +299,7 @@ jobs:
   # production heal runs.
   #
   # No real PAT or LLM call is exercised — provider=ollama with empty
-  # api-key passes Zod superRefine; Step 6 never runs because Step 5
+  # api_key passes Zod superRefine; Step 6 never runs because Step 5
   # fails; Step 7 (if: always()) does run and is the unit under test.
   # ──────────────────────────────────────────────────────────────────
   self-test-startup-timeout-cleanup:
@@ -366,22 +326,22 @@ jobs:
           WRAPPER
           chmod +x /tmp/never-ready.sh
 
-      - name: Invoke action with never-ready start-command (heal mode, 10s timeout)
+      - name: Invoke action with never-ready start_command (heal mode, 10s timeout)
         id: run
         continue-on-error: true
         uses: ./
         with:
           mode: heal
           provider: ollama
-          api-key: ''
-          api-endpoint: http://localhost:11434
-          healer-token: 'test-canary-pat-DO-NOT-USE'
-          github-token: ${{ github.token }}
-          setup-command: 'echo "no setup needed"'
-          start-command: '/tmp/never-ready.sh'
-          test-command: 'echo "no test needed"'
-          base-url: 'http://localhost:3000'
-          startup-timeout-seconds: '10'
+          api_key: ''
+          api_endpoint: http://localhost:11434
+          healer_token: 'test-canary-pat-DO-NOT-USE'
+          github_token: ${{ github.token }}
+          setup_command: 'echo "no setup needed"'
+          start_command: '/tmp/never-ready.sh'
+          test_command: 'echo "no test needed"'
+          base_url: 'http://localhost:3000'
+          startup_timeout_seconds: '10'
 
       - name: Assert action failed at Step 5 (startup-timeout reached)
         shell: bash

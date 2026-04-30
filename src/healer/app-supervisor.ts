@@ -2,9 +2,9 @@
 //
 // Readiness probe (HEA-02 / D-15) + PID-file path constant (HEA-03 / HEA-06 / D-12).
 //
-// Note: this file does NOT spawn the start-command. Per CONTEXT D-14 + Architectural
+// Note: this file does NOT spawn the start_command. Per CONTEXT D-14 + Architectural
 // Responsibility Map, the long-running app process is spawned by action.yml composite
-// Step 4 ("Spawn start-command (background) + wait for ready"), which writes the
+// Step 4 ("Spawn start_command (background) + wait for ready"), which writes the
 // PID to PID_FILE_PATH. This TypeScript file:
 //   1. Provides the probe loop that the action.yml step's `npx tsx` invocation runs
 //   2. Defines the PID_FILE_PATH constant — single source of truth shared with the

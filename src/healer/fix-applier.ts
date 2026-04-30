@@ -26,7 +26,7 @@ export interface ApplyFixArgs {
   testSlug: string;        // slugified test title (lowercase, [^a-z0-9]+ → -, max 50 chars)
   shortSha: string;        // 7-char hex SHA from dispatch payload
   cwd: string;             // workspace where origin remote is configured
-  token: string;           // healer-token PAT (registered with core.setSecret at startup);
+  token: string;           // healer_token PAT (registered with core.setSecret at startup);
                            //   ignored by file:// remotes — set to '' for tests
 }
 
@@ -66,7 +66,7 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   // 4. Apply the diff with 3-way merge fallback AND stage in one atomic op.
   //    `--index` stages exactly the files in the patch — untracked workspace
   //    files (e.g. .healer/ from subpath-checkout consumers, package-lock.json
-  //    from setup-command npm install) are NOT swept into the commit.
+  //    from setup_command npm install) are NOT swept into the commit.
   //    Surfaced during 03.1-03 iteration 5 — fix replaces the prior `git apply --3way`
   //    + `git add -A` pair, which had been silently committing arbitrary worktree state.
   const apply = await getExecOutput(

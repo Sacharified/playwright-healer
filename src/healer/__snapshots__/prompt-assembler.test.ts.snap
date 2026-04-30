@@ -81,6 +81,6 @@ Soft termination rule (you must self-enforce):
 - If you have not reproduced the failure within 10 browser tool calls, stop and emit \`no-fix-proposable\`.
 - If after reproduction you cannot identify a fix in the hinted fix class, emit \`no-fix-proposable\` rather than guessing.
 
-Quality bar: the fix must validate against \`rerun-count\` reruns at \`retries=0\`. A flaky proposal will be rejected by the validator and the heal will route to a \`validation-failed\` issue.
+Quality bar: the fix must validate against \`rerun_count\` reruns at \`retries=0\`. A flaky proposal will be rejected by the validator and the heal will route to a \`validation-failed\` issue.
 "
 `;

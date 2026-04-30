@@ -3,16 +3,16 @@
 // playwright-healer — composite GitHub Action entry point.
 //
 // Startup ordering (D-07) is AUTHORITATIVE:
-//   1. getInput() the three secret inputs (api-key may be empty for Ollama
+//   1. getInput() the three secret inputs (api_key may be empty for Ollama
 //      localhost — core.setSecret('') is a documented no-op, so we call it
 //      unconditionally to preserve the "setSecret × 3 before any log line"
 //      invariant with zero branching)
 //   2. setSecret() each one — registers with runner mask BEFORE any log line
-//   3. getInput() the non-secret inputs (mode, provider, model, api-endpoint, …)
+//   3. getInput() the non-secret inputs (mode, provider, model, api_endpoint, …)
 //   4. Load + merge YAML overrides (CFG-06/CFG-07) BEFORE Zod sees rawInputs
 //      so SC#4 (banana threshold in YAML) surfaces as a Zod field error
 //   5. Zod validation (fail-fast with field-naming error on invalid input;
-//      per-provider api-key requirement enforced via superRefine)
+//      per-provider api_key requirement enforced via superRefine)
 //   6. switch-dispatch on mode: dry-run is self-contained; ingest/heal dynamically
 //      import their stub modules
 //
@@ -35,9 +35,9 @@ function camelize(kebab: string): string {
 
 async function main(): Promise<void> {
   // ── Phase A: SECRET MASKING (D-07 — must be first, before any log line) ──
-  const apiKey      = core.getInput('api-key');
-  const healerToken = core.getInput('healer-token', { required: true });
-  const githubToken = core.getInput('github-token', { required: true });
+  const apiKey      = core.getInput('api_key');
+  const healerToken = core.getInput('healer_token', { required: true });
+  const githubToken = core.getInput('github_token', { required: true });
 
   core.setSecret(apiKey);
   core.setSecret(healerToken);
@@ -46,37 +46,37 @@ async function main(): Promise<void> {
   // ── Phase B: INPUT COLLECTION ──
   const actionInputs: Record<string, string> = {
     mode:           core.getInput('mode',           { required: true }),
-    setupCommand:   core.getInput('setup-command'),
-    startCommand:   core.getInput('start-command'),
-    testCommand:    core.getInput('test-command'),
-    baseUrl:        core.getInput('base-url'),
+    setupCommand:   core.getInput('setup_command'),
+    startCommand:   core.getInput('start_command'),
+    testCommand:    core.getInput('test_command'),
+    baseUrl:        core.getInput('base_url'),
     apiKey,
     healerToken,
     githubToken,
     provider:       core.getInput('provider'),
     model:          core.getInput('model'),
-    apiEndpoint:    core.getInput('api-endpoint'),
+    apiEndpoint:    core.getInput('api_endpoint'),
     // ── CFG-03: Phase 02 threshold inputs ─────────────────────────────────
-    reportPath:              core.getInput('report-path'),
-    flakeRateThreshold:      core.getInput('flake-rate-threshold'),
-    flakeWindowDays:         core.getInput('flake-window-days'),
-    slowRegressionPct:       core.getInput('slow-regression-pct'),
-    rerunCount:              core.getInput('rerun-count'),
-    rerunPassRate:           core.getInput('rerun-pass-rate'),
-    maxBudgetUsd:            core.getInput('max-budget-usd'),
-    maxTurns:                core.getInput('max-turns'),
-    retentionDays:           core.getInput('retention-days'),
-    maxHealsPerTestPerWeek:  core.getInput('max-heals-per-test-per-week'),
+    reportPath:              core.getInput('report_path'),
+    flakeRateThreshold:      core.getInput('flake_rate_threshold'),
+    flakeWindowDays:         core.getInput('flake_window_days'),
+    slowRegressionPct:       core.getInput('slow_regression_pct'),
+    rerunCount:              core.getInput('rerun_count'),
+    rerunPassRate:           core.getInput('rerun_pass_rate'),
+    maxBudgetUsd:            core.getInput('max_budget_usd'),
+    maxTurns:                core.getInput('max_turns'),
+    retentionDays:           core.getInput('retention_days'),
+    maxHealsPerTestPerWeek:  core.getInput('max_heals_per_test_per_week'),
     // ── CFG-04: Per-fix-class toggles + startup timeout (Phase 3) ─────────
-    enableSelectorFixes:    core.getInput('enable-selector-fixes'),
-    enableWaitFixes:        core.getInput('enable-wait-fixes'),
-    enableAssertionFixes:   core.getInput('enable-assertion-fixes'),
-    enableSlowFixes:        core.getInput('enable-slow-fixes'),
-    startupTimeoutSeconds:  core.getInput('startup-timeout-seconds'),
+    enableSelectorFixes:    core.getInput('enable_selector_fixes'),
+    enableWaitFixes:        core.getInput('enable_wait_fixes'),
+    enableAssertionFixes:   core.getInput('enable_assertion_fixes'),
+    enableSlowFixes:        core.getInput('enable_slow_fixes'),
+    startupTimeoutSeconds:  core.getInput('startup_timeout_seconds'),
     // ── Phase 03.1 demo-mode skip flags (Plan 01 added schema; this wires inputs) ──
-    skipDeterministicCheck: core.getInput('skip-deterministic-check'),
-    skipPostFixValidation:  core.getInput('skip-post-fix-validation'),
-    skipDiffLint:           core.getInput('skip-diff-lint'),
+    skipDeterministicCheck: core.getInput('skip_deterministic_check'),
+    skipPostFixValidation:  core.getInput('skip_post_fix_validation'),
+    skipDiffLint:           core.getInput('skip_diff_lint'),
   };
 
   // ── Phase B': YAML MERGE (CFG-06/CFG-07; load-bearing for SC#4) ─────────
@@ -140,15 +140,15 @@ async function runDryRun(config: Config): Promise<void> {
     ['mode',          config.mode],
     ['provider',      config.provider],
     ['model',         modelCell],
-    ['api-endpoint',  apiEndpointCell],
-    ['setup-command', config.setupCommand || '(empty)'],
-    ['start-command', config.startCommand || '(empty)'],
-    ['test-command',  config.testCommand  || '(empty)'],
-    ['base-url',      config.baseUrl      || '(empty)'],
+    ['api_endpoint',  apiEndpointCell],
+    ['setup_command', config.setupCommand || '(empty)'],
+    ['start_command', config.startCommand || '(empty)'],
+    ['test_command',  config.testCommand  || '(empty)'],
+    ['base_url',      config.baseUrl      || '(empty)'],
     // Secrets intentionally omitted from dry-run output (defense in depth on top of setSecret masking).
-    ['api-key',      apiKeyCell],
-    ['healer-token', '(set — redacted)'],
-    ['github-token', '(set — redacted)'],
+    ['api_key',      apiKeyCell],
+    ['healer_token', '(set — redacted)'],
+    ['github_token', '(set — redacted)'],
   ];
 
   let md = '# playwright-healer — dry-run summary\n\n';
