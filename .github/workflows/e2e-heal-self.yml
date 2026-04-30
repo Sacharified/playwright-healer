@@ -1,0 +1,174 @@
+name: E2E Self-Heal
+
+# Manual-dispatch only. Each run consumes Gemini API budget (~$0.04) and opens
+# a PR on this repo. Do not auto-trigger on push/PR.
+#
+# Pre-flight (once, before first dispatch):
+#   - Add `GEMINI_API_KEY` and `HEALER_PAT` (PAT with `repo` scope) to repo
+#     secrets at /settings/secrets/actions
+#   - Confirm `fixture/tests/broken-selector.spec.ts` is in its broken form
+#     (locator '#wrong-id'). If a previous heal PR was merged, revert it first.
+#
+# What this workflow proves end-to-end:
+#   1. The fixture's broken-selector test fails as expected (red guard)
+#   2. The local action invoked in heal mode against the broken test
+#      produces a valid fix proposal and lands a PR on this repo
+#   3. A PR matching the expected title pattern exists post-heal
+
+on:
+  workflow_dispatch:
+    inputs:
+      testFile:
+        description: 'Test file path (relative to repo root)'
+        required: false
+        default: 'fixture/tests/broken-selector.spec.ts'
+      testTitle:
+        description: 'Test title (matches a Playwright test() name)'
+        required: false
+        default: 'clicks submit button and sees confirmation'
+      fixClassHint:
+        description: 'Fix class hint: selectors | waits | assertions | slow'
+        required: false
+        default: 'selectors'
+      commitSha:
+        description: 'Commit SHA to heal against (blank → HEAD of main)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Job 1: Red guard — the fixture test MUST fail without intervention ──
+  assert-test-broken:
+    name: Assert fixture test is broken
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: '24'
+
+      - name: Install fixture deps
+        working-directory: fixture
+        run: |
+          npm install
+          npx playwright install chromium --with-deps
+
+      - name: Start fixture server
+        working-directory: fixture
+        run: |
+          npm run start &
+          echo $! > /tmp/fixture-pid
+          # naive readiness wait — http-server binds in well under a second
+          for i in 1 2 3 4 5; do
+            if curl -fsS http://localhost:8080/ > /dev/null; then
+              echo "fixture server up"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run broken test (must FAIL)
+        working-directory: fixture
+        env:
+          BASE_URL: http://localhost:8080
+        run: |
+          set +e
+          npx playwright test --reporter=list
+          EXIT=$?
+          set -e
+          if [ "$EXIT" -eq 0 ]; then
+            echo "::error::Fixture test passed unexpectedly. Either the test is no longer broken (a heal PR was merged?) or the fixture is misconfigured. Revert fixture/tests/broken-selector.spec.ts to its broken form."
+            exit 1
+          fi
+          echo "Test failed as expected (exit $EXIT) — broken state confirmed."
+
+      - name: Stop fixture server
+        if: always()
+        run: |
+          kill "$(cat /tmp/fixture-pid)" 2>/dev/null || true
+
+  # ── Job 2: Heal — invoke the action against the broken test ──
+  heal:
+    name: Heal broken test
+    needs: assert-test-broken
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+          # heal mode does its own fetch/checkout from inputs.commit-sha or HEAD
+
+      - name: Resolve dispatch SHA
+        id: resolve
+        run: |
+          INPUT_SHA="${{ inputs.commitSha }}"
+          if [ -z "$INPUT_SHA" ]; then
+            INPUT_SHA="$(git rev-parse HEAD)"
+          fi
+          echo "sha=$INPUT_SHA" >> "$GITHUB_OUTPUT"
+
+      # action.yml reads dispatch payload via github.context.payload.inputs.
+      # workflow_dispatch already populates that — no extra plumbing needed.
+      - name: Run playwright-healer (heal mode, self-consumed)
+        uses: ./
+        with:
+          mode: heal
+          provider: gemini
+          model: gemini-2.5-flash
+          api-key: ${{ secrets.GEMINI_API_KEY }}
+          healer-token: ${{ secrets.HEALER_PAT }}
+          commit-sha: ${{ steps.resolve.outputs.sha }}
+          base-url: http://localhost:8080
+          setup-command: 'cd fixture && npm install && npx playwright install chromium'
+          start-command: 'cd fixture && npm run start'
+          test-command: 'cd fixture && npx playwright test'
+          max-budget-usd: '1.00'
+          max-turns: '10'
+          # Demo-mode flags inherited from Phase 03.1 — fixture-ci proxy is
+          # the post-heal Job 3 below, not the action's local validator.
+          skip-deterministic-check: 'true'
+          skip-post-fix-validation: 'true'
+          # Keep diff-lint ENABLED — it scopes the agent's diff to test files
+          # only, preventing accidental modifications to action source.
+          skip-diff-lint: 'false'
+
+  # ── Job 3: Verify a healer PR was opened on this repo ──
+  assert-pr-opened:
+    name: Assert healer PR exists
+    needs: heal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Wait briefly for PR creation propagation
+        run: sleep 5
+
+      - name: Verify a healer PR was opened
+        env:
+          GH_TOKEN: ${{ secrets.HEALER_PAT }}
+        run: |
+          PR_JSON=$(gh pr list \
+            -R ${{ github.repository }} \
+            --search "[playwright-healer] Fix flaky in:title" \
+            --state open \
+            --json number,title,url \
+            --limit 5)
+          PR_COUNT=$(echo "$PR_JSON" | jq 'length')
+          if [ "$PR_COUNT" -eq 0 ]; then
+            echo "::error::No healer PR was opened. Heal job appeared to succeed but no PR exists."
+            exit 1
+          fi
+          echo "Found $PR_COUNT healer PR(s):"
+          echo "$PR_JSON" | jq -r '.[] | "  #\(.number): \(.title)\n  \(.url)"'
+          echo
+          echo "::notice::E2E self-heal verified end-to-end."

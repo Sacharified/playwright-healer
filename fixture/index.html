@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>playwright-healer fixture</title>
+</head>
+<body>
+  <h1>playwright-healer fixture</h1>
+  <button id="correct-id">Submit</button>
+  <p id="message"></p>
+  <script>
+    document.getElementById('correct-id').addEventListener('click', () => {
+      document.getElementById('message').textContent = 'Submitted!';
+    });
+  </script>
+</body>
+</html>
