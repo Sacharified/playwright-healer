@@ -31,8 +31,13 @@ export const ASSERTION_WEAKENING_PAIRS = Object.freeze([
   { from: /\.toEqual\s*\(/, to: /\.toContain\s*\(/ },
 ] as const);
 
+// Matches `tests/`, `e2e/`, or `playwright/` as a path segment anywhere in the
+// path — not just at the repo root. This accommodates monorepos
+// (`packages/foo/tests/...`) and self-test fixtures (`fixture/tests/...`)
+// without weakening the safety net: the agent's diff still must touch only
+// conventionally-named test directories.
 export const TEST_PATH_ALLOWLIST = Object.freeze([
-  /^tests\//,
-  /^e2e\//,
-  /^playwright\//,
+  /(?:^|\/)tests\//,
+  /(?:^|\/)e2e\//,
+  /(?:^|\/)playwright\//,
 ] as const);

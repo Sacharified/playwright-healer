@@ -56,10 +56,12 @@ FIXTURE_PORT="${FIXTURE_PORT:-8080}"
 FIXTURE_PID=$!
 
 EVENT_JSON=$(mktemp -t heal-event.XXXXXX.json)
+STEP_SUMMARY_FILE=$(mktemp -t heal-step-summary.XXXXXX)
+GITHUB_OUTPUT_FILE=$(mktemp -t heal-github-output.XXXXXX)
 
 cleanup() {
   kill "$FIXTURE_PID" 2>/dev/null || true
-  rm -f "$EVENT_JSON"
+  rm -f "$EVENT_JSON" "$STEP_SUMMARY_FILE" "$GITHUB_OUTPUT_FILE"
 }
 trap cleanup EXIT INT TERM
 
@@ -117,6 +119,11 @@ export GITHUB_EVENT_PATH="$EVENT_JSON"
 export GITHUB_SERVER_URL=https://github.com
 export GITHUB_RUN_ID=0
 export GITHUB_ACTOR="${USER:-local}"
+# core.summary.write() and core.setOutput() append to these files; the runner
+# normally creates them. Locally we point at temp files so the action code
+# doesn't error out when issue-writer / dispatcher tries to publish a summary.
+export GITHUB_STEP_SUMMARY="$STEP_SUMMARY_FILE"
+export GITHUB_OUTPUT="$GITHUB_OUTPUT_FILE"
 
 # Heal mode reads HEALER_DEFAULT_BRANCH directly (src/healer/index.ts:113)
 export HEALER_DEFAULT_BRANCH=main

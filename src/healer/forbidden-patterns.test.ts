@@ -66,4 +66,23 @@ describe('forbidden-patterns — D-17 single source of truth', () => {
   it('TEST_PATH_ALLOWLIST does not match src/ paths', () => {
     expect(TEST_PATH_ALLOWLIST.some((re) => re.test('src/foo.ts'))).toBe(false);
   });
+
+  it('TEST_PATH_ALLOWLIST matches nested fixture/tests/ paths (in-repo self-test fixture)', () => {
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('fixture/tests/broken-selector.spec.ts'))).toBe(true);
+  });
+
+  it('TEST_PATH_ALLOWLIST matches nested monorepo packages/foo/tests/ paths', () => {
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('packages/foo/tests/foo.spec.ts'))).toBe(true);
+  });
+
+  it('TEST_PATH_ALLOWLIST matches nested e2e/ + playwright/ segments', () => {
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('apps/web/e2e/login.spec.ts'))).toBe(true);
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('packages/ui/playwright/button.spec.ts'))).toBe(true);
+  });
+
+  it('TEST_PATH_ALLOWLIST does not match a file whose name happens to contain "tests"', () => {
+    // "manifests/foo.ts" should not match — only `/tests/` as a segment, not "tests" as a substring.
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('manifests/foo.ts'))).toBe(false);
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('src/contests.ts'))).toBe(false);
+  });
 });
