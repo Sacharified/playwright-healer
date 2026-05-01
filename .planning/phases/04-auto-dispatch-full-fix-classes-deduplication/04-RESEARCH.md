@@ -30,7 +30,7 @@ Phase 04 closes five gaps:
 |------------|-------------|----------------|-----------|
 | Threshold detection (read NDJSON, compute flake-rate) | Action / Ingest mode | — | Already shipped Phase 02 — pure function over state-branch records |
 | Auto-dispatch trigger (`workflow_dispatch` REST call) | Action / Ingest mode | — | Phase 04 addition. Octokit call from ingest, gated by `enable_auto_dispatch` flag |
-| Concurrency-group enforcement | Consumer's healer workflow YAML | — | GitHub Actions evaluates `concurrency:` on the healer workflow itself; the action cannot inject it. Document as part of the example workflow in Phase 06 |
+| Concurrency-group enforcement | Consumer's healer workflow YAML | — | GitHub Actions evaluates `concurrency:` on the healer workflow itself; the action cannot inject it. **Phase 04 adds the block to `.github/workflows/e2e-heal-self.yml`** (the canonical in-repo consumer workflow) so SC #2 is verifiable; Phase 06 ships a documented example for downstream consumers. |
 | Per-test heal-cap query (read state branch) | Action / Ingest mode | Action / Heal mode (backstop) | D-04 — defense-in-depth pattern matching SEC-05's existing dual-check |
 | Fix-class hint computation | Action / Ingest mode | LLM (override in proposal) | Hybrid classifier — `errorSignature` → `fixClassHint` is fast and deterministic; LLM gets final say in the JSON proposal |
 | Prompt assembly per class | Action / Heal mode | — | Already shipped Phase 03 (selectors+waits); Phase 04 adds two more template files |
@@ -77,7 +77,7 @@ Ingest queries the state branch for the per-test heal count over the rolling `fl
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| DET-05 | Live dispatch mode fires `workflow_dispatch` with self-contained JSON payload | Verified: `octokit.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id, ref, inputs })` is the canonical API. workflow_dispatch caps at 25 inputs / 1024 chars per input — the existing `DispatchPayload` (4 top-level + nested `recentRunStats`) fits comfortably if `recentRunStats` is JSON-encoded into a single input string. See "Code Examples §1". |
+| DET-05 | Live dispatch mode fires `workflow_dispatch` with self-contained JSON payload | Verified: `octokit.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id, ref, inputs })` is the canonical API. workflow_dispatch caps at 25 inputs / 1024 chars per input — `DispatchPayload` widens to 8 flat inputs (`commitSha`, `testFile`, `testTitle`, `fixClassHint`, plus optional flat `flakeRate` / `windowDays` / `runCount`, plus required `concurrencyKey`) instead of the nested `recentRunStats` object. Keeps Zod schema flat; receive-side has no `JSON.parse` failure mode. See "Code Examples §1". |
 | DET-06 | Dispatch uses `healer-token` PAT (not `GITHUB_TOKEN`) | Verified: `octokit.rest.actions.createWorkflowDispatch` requires `repo` scope; PAT path is documented. Reuse `config.healerToken` (already wired through `src/index.ts:69` and used by `pr-writer.ts:67`). No new auth surface. |
 | DET-07 | Concurrency group keyed on test file + test title | GitHub does NOT document a concurrency group name length cap (verified across `docs.github.com/en/actions/using-jobs/using-concurrency`, `docs.github.com/en/actions/reference/limits`, and a search for `"too long"` issues — no hits). For safety/debuggability use a slug+hash recipe; concurrency block lives in the **consumer's healer workflow YAML**, not the action. See "Code Examples §2". |
 | FIX-07 | Healer supports all four fix classes; classes individually disabled via CFG-04 | Type contract widening across 6 sites (`dispatch-payload.ts`, `prompt-assembler.ts`, `adapter.ts`, `pr-writer.ts`, `github.ts:parseFinalText`, `output-format.md`). Two new prompt templates. Ingest-side classifier on `NdjsonTestEntry.errorSignature`. See "FIX-07 Architecture" below. |
@@ -149,8 +149,11 @@ No new libraries needed. The phase is wiring + extension only.
         └──────────────────────────────────┘
                        │
                        │ workflow_dispatch with payload:
-                       │   { commitSha, testFile, testTitle,
-                       │     fixClassHint, recentRunStats }
+                       │   8 flat inputs:
+                       │   commitSha, testFile, testTitle,
+                       │   fixClassHint, flakeRate,
+                       │   windowDays, runCount,
+                       │   concurrencyKey
                        ▼
         ┌──────────────────────────────────┐
         │ Consumer's playwright-healer.yml │
@@ -237,7 +240,12 @@ export async function fireDispatch(args: {
   detection: Detection;
   commitSha: string;
   fixClassHint: 'selectors' | 'waits' | 'assertions' | 'slow';
-  recentRunStatsJson: string;  // pre-encoded — workflow_dispatch caps each input at 1024 chars
+  // Flat run-stats: 3 separate inputs instead of one JSON-encoded blob.
+  // Keeps DispatchPayload Zod schema flat on the receive side (one less failure mode).
+  flakeRate: number;
+  windowDays: number;
+  runCount: number;
+  concurrencyKey: string;      // pre-computed slug+hash; healer workflow uses it directly
 }): Promise<void> {
   const octokit = new Octokit({ auth: args.patToken });
 
@@ -254,7 +262,11 @@ export async function fireDispatch(args: {
       testFile,
       testTitle,
       fixClassHint: args.fixClassHint,
-      recentRunStats: args.recentRunStatsJson,  // JSON-encoded sub-object
+      // Optional run-stats — passed as strings (workflow_dispatch inputs are always strings)
+      flakeRate:      String(args.flakeRate),
+      windowDays:     String(args.windowDays),
+      runCount:       String(args.runCount),
+      concurrencyKey: args.concurrencyKey,
     },
   });
 
@@ -271,30 +283,10 @@ export async function fireDispatch(args: {
 ### Pattern 2: Concurrency Group Slug+Hash (DET-07)
 
 **What:** A consumer-side `concurrency:` block keyed on `(repository, testFile, testTitle)`.
-**When to use:** In the consumer's healer workflow file. Phase 06 ships this in the example workflow; Phase 04 documents it.
+**When to use:** In the consumer's healer workflow file. **Phase 04 adds it to `e2e-heal-self.yml` (this repo's canonical consumer workflow)** so ROADMAP SC #2 ("two simultaneous dispatches → one queued heal") is verifiable. Phase 06 ships a documented example for downstream consumers.
 **Example:**
 
-```yaml
-# .github/workflows/playwright-healer.yml (CONSUMER-SHIPPED)
-on:
-  workflow_dispatch:
-    inputs:
-      commitSha:    { required: true }
-      testFile:     { required: true }
-      testTitle:    { required: true }
-      fixClassHint: { required: true }
-      recentRunStats: { required: false }
-
-# DET-07 — slug + hash keeps the group under any plausible cap and stays unique even on truncation
-concurrency:
-  group: >
-    playwright-healer-${{ github.repository }}-${{
-      hashFiles('/dev/null') /* placeholder; see note */
-    }}
-  cancel-in-progress: false
-```
-
-**Reality check:** GitHub does NOT expose a string-hash function in workflow expressions, only `hashFiles(...)`. The clean recipe must compute the hash inside ingest before dispatch and pass it as a dispatch input:
+GitHub does NOT expose a string-hash function in workflow expressions (only `hashFiles(...)` over file contents). Compute the hash in ingest before dispatch, pass it as a dispatch input, and the healer workflow uses it directly:
 
 ```typescript
 // In ingest/dispatch.ts — compute concurrency key alongside payload
@@ -314,9 +306,23 @@ function slug(s: string, maxLen: number): string {
 }
 ```
 
-The dispatch payload then carries `concurrencyKey` as a 6th input, and the healer workflow reads it:
+The dispatch payload carries `concurrencyKey` as a flat input. The healer workflow reads it like this:
 
 ```yaml
+# .github/workflows/e2e-heal-self.yml (Phase 04 modification)
+# AND consumer's playwright-healer.yml (Phase 06 example)
+on:
+  workflow_dispatch:
+    inputs:
+      commitSha:      { required: true }
+      testFile:       { required: true }
+      testTitle:      { required: true }
+      fixClassHint:   { required: true }
+      flakeRate:      { required: false }
+      windowDays:     { required: false }
+      runCount:       { required: false }
+      concurrencyKey: { required: true }   # NEW Phase 04
+
 concurrency:
   group: playwright-healer-${{ github.repository }}-${{ inputs.concurrencyKey }}
   cancel-in-progress: false
@@ -467,11 +473,11 @@ Rationale:
 | Workflow_dispatch HTTP call | Custom `fetch` POST with auth/retry | `octokit.rest.actions.createWorkflowDispatch` | Built-in retry, rate-limit handling, error-message normalization; matches existing `pr-writer.ts` patterns |
 | PR/issue title pattern matching | Custom string parsing | `octokit.rest.search.issuesAndPullRequests` with `in:title` qualifier | GitHub-side index; respects `is:issue` / `is:pull-request` partition |
 | Branch-name → PR lookup | `git ls-remote` + scrape | `octokit.rest.pulls.list({ head: 'owner:branch' })` | Branch filter is a query parameter, single API call |
-| Dispatch input size budgeting | Manual chunking across multiple inputs | JSON-encode `recentRunStats` into a single string input | 25-input cap is comfortable; 1024-char-per-input is the real constraint, but `{ flakeRate, windowDays, runCount }` JSON-stringifies under 100 chars |
+| Dispatch input size budgeting | Manual chunking across multiple inputs | 8 flat string inputs (well under the 25 cap) | 25-input cap is comfortable. `flakeRate` / `windowDays` / `runCount` are flat numerics-as-strings; no JSON encoding/decoding round-trip needed. |
 | Concurrency group slug | Custom hash collision avoidance | `crypto.createHash('sha1')` — already in Node stdlib | Standard library; deterministic |
 | Per-class system-prompt construction | Single mega-prompt with branches | Per-class `.md` files combined by `prompt-assembler.ts` | Existing pattern; smaller blast radius per template; A/B testable |
 
-**Key insight:** Almost everything Phase 04 needs is already in the stack. The temptation will be to over-engineer the dispatch payload encoding or the dedup query. The cost of the standard answer (Octokit + JSON-encoded sub-payload) is one extra `JSON.parse(inputs.recentRunStats)` on the receive side and zero new dependencies.
+**Key insight:** Almost everything Phase 04 needs is already in the stack. The temptation will be to over-engineer the dispatch payload encoding or the dedup query. The cost of the standard answer (Octokit + flat dispatch inputs) is zero new dependencies — and avoiding the nested `recentRunStats` JSON encoding removes one parse-failure mode on the receive side.
 
 ## Common Pitfalls
 
@@ -483,7 +489,7 @@ Rationale:
 
 **How to avoid:**
 - `testFile` and `testTitle` typically fit (<1024 each); use them as separate inputs, not concatenated.
-- `recentRunStats` JSON-encodes to ~80 chars; safe.
+- `flakeRate` / `windowDays` / `runCount` are passed as 3 flat string inputs; each is ≤ 32 chars (numeric strings). No nesting, no JSON-parse on the receive side.
 - Add a pre-dispatch length check in `dispatch.ts`: if any input value > 1000 chars, log `core.warning` and skip dispatch with `::warning::` annotation rather than firing a doomed call.
 
 **Warning signs:** First sign is a `Invalid dispatch payload: testTitle: String must contain at least 1 character` (truncation hit a boundary) on the receive side.
@@ -638,15 +644,17 @@ if (config.enableAutoDispatch) {
       owner: github.context.repo.owner,
       repo:  github.context.repo.repo,
       workflowFile: 'playwright-healer.yml',  // could be a config input later
-      ref: process.env.GITHUB_REF_NAME ?? 'main',
+      // CRITICAL: ref MUST be the default branch (where the heal workflow file is canonical),
+      // NOT GITHUB_REF_NAME (which is the ingesting branch — could be a feature branch or PR).
+      ref: github.context.payload.repository?.default_branch ?? 'main',
       detection,
       commitSha: github.context.sha,
       fixClassHint,
-      recentRunStatsJson: JSON.stringify({
-        flakeRate: detection.value,
-        windowDays: detection.windowDays,
-        runCount: detection.runCount,
-      }),
+      // Flat run-stats — same fields, just not JSON-encoded
+      flakeRate:  detection.reason === 'flake-rate' ? detection.value : 0,
+      windowDays: detection.windowDays,
+      runCount:   detection.runCount,
+      concurrencyKey: buildConcurrencyKey(sampleEntry.filePath, sampleEntry.title),
     });
   }
 }
@@ -740,11 +748,39 @@ export async function shouldSkipHeal(
 
 (Note: `FailureMode` enum needs a 7th token `'cap-exceeded'` — small addition to `src/healer/types.ts`. The existing 6 tokens are LOCKED per D-09; widening is consistent with that decision.)
 
+
+### Heal-Event Write Sites (consistency-critical)
+
+The new `runs/YYYY/MM/DD-heals.ndjson` schema (Pitfall 7) is written from **three** sites. The planner must keep the event shape and write protocol identical across all three or `countHealsForTest` will silently undercount.
+
+| Site | Outcome | When |
+|------|---------|------|
+| `src/healer/pr-writer.ts` `openHealerPr()` | `'pr-opened'` | After successful `octokit.pulls.create` (or after dedup-comment lands on existing PR) |
+| `src/healer/issue-writer.ts` `openIssue()` | `'issue-opened'` | After successful `octokit.issues.create` (or after dedup-comment lands on existing issue) |
+| `src/ingest/dispatch.ts` `fireDispatch()` cap-hit branch | `'cap-reached'` | When ingest-side D-04 query returns count ≥ cap (BEFORE `createWorkflowDispatch` call) — counts toward the cap so consecutive heal attempts can't bypass the gate by burning all dispatches before any heal completes |
+
+**Shared event shape** (all three sites use the same Zod schema):
+
+```typescript
+// src/shared/types.ts (NEW interface, exported)
+export interface HealEvent {
+  schemaVersion: 1;
+  timestamp: string;     // ISO 8601 UTC
+  testId: string;        // "{filePath}::{title}" — same key as NdjsonTestEntry.testId
+  outcome: 'pr-opened' | 'issue-opened' | 'cap-reached';
+  dispatchRunId: string; // GITHUB_RUN_ID at write time
+  prUrl?: string;        // populated for 'pr-opened' only
+  issueUrl?: string;     // populated for 'issue-opened' only
+}
+```
+
+**Shared write protocol:** call a single `appendHealEvent(event, worktreePath)` helper exported from `src/shared/state-branch.ts`. Same `--force-with-lease=playwright-healer-state` retry loop and atomic-rename write strategy as `appendRecord()`. Do NOT inline the write logic at the three sites — drift will silently undercount.
+
 ## State of the Art
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| `workflow_dispatch` capped at 10 inputs | 25 inputs | Dec 2025 (`github.blog/changelog/2025-12-04`) | We have plenty of headroom — `DispatchPayload` uses 5 inputs; a future `concurrencyKey` 6th still fits |
+| `workflow_dispatch` capped at 10 inputs | 25 inputs | Dec 2025 (`github.blog/changelog/2025-12-04`) | We have plenty of headroom — `DispatchPayload` uses 8 flat inputs (Phase 04 widening); future additions stay well under 25 |
 | `actions/checkout@v4` | `actions/checkout@v6.0.2` (SHA `de0fac2e...`) | Already pinned in `e2e-heal-self.yml:47` | No change for Phase 04 |
 | `--force-with-lease` for healer branch push | Plain `--force` (bot-exclusive namespace) | 03.1 (`fix-applier.ts:122-126`) | No change for Phase 04; preserve the choice and the rationale comment |
 | Action input names kebab-case | snake_case (`api_key`, `enable_auto_dispatch`, etc.) | commit `63646d3` | All new inputs follow snake_case; CONTEXT.md `<code_context>` is stale on this |
@@ -796,10 +832,25 @@ CONTEXT specifics line 116 asks: "PLAN.md should include a 're-run the 03.1 demo
    - What's unclear: Whether multi-workflow consumers (e.g., separate per-environment heal workflows) need to override.
    - Recommendation: Make it a config input (`healer_workflow_file`, default `'playwright-healer.yml'`). One-line cost; makes the action more reusable.
 
-3. **`recentRunStats` payload encoding** — JSON-encoded into a single dispatch input, or expanded to 3 separate inputs (`flakeRate`, `windowDays`, `runCount`)?
-   - What we know: Either fits the 25-input cap.
-   - What's unclear: Whether keeping `recentRunStats` as a Zod-validated nested object on the receive side (current shape in `dispatch-payload.ts:17`) is friction-worth-it.
-   - Recommendation: 3 separate inputs. Keeps Zod schema flat; receive-side `JSON.parse` is one less failure mode. Update `DispatchPayload` accordingly.
+3. **`DispatchPayload` schema migration — CLOSED** (3 flat inputs, not nested). The receive-side schema in `src/healer/dispatch-payload.ts` widens like this:
+
+   ```typescript
+   // BEFORE (Phase 03):
+   recentRunStats: z.object({
+     flakeRate:  z.number().min(0).max(1),
+     windowDays: z.number().int().min(1),
+     runCount:   z.number().int().min(0),
+   }).optional()
+
+   // AFTER (Phase 04 — flat):
+   flakeRate:      z.coerce.number().min(0).max(1).optional(),
+   windowDays:     z.coerce.number().int().min(1).optional(),
+   runCount:       z.coerce.number().int().min(0).optional(),
+   concurrencyKey: z.string().min(1),  // required from Phase 04 forward
+   fixClassHint:   z.enum(['selectors', 'waits', 'assertions', 'slow']),  // widened
+   ```
+
+   `z.coerce.number()` handles the string-to-number coercion since workflow_dispatch inputs arrive as strings. Existing manual-dispatch consumers (Phase 03 era) lose `recentRunStats` as a nested object but the three sub-fields remain available individually.
 
 4. **Diff-lint re-engagement default flip — opt-in or opt-out?** — Phase 04 turns `skipDiffLint` default from `'true'` (demo) to `'false'` (production). But does the demo workflow `e2e-heal-self.yml` need to keep it on?
    - What we know: `e2e-heal-self.yml:141` explicitly sets `skip_diff_lint: 'false'` — the diff-lint is already enabled in the e2e workflow.
@@ -842,7 +893,7 @@ No missing dependencies. No fallback paths needed.
 | DET-06 | `createWorkflowDispatch` is called with `auth: healerToken`, NOT githubToken | unit | (same file as DET-05; assertion on Octokit constructor mock) | ❌ Wave 0 |
 | DET-07 | Concurrency key is deterministic for same `(testFile, testTitle)`; differs when either changes | unit | `./node_modules/.bin/vitest run src/ingest/dispatch.test.ts -t "concurrency-key"` | ❌ Wave 0 |
 | DET-07 | Generated key is ≤ 250 chars even for pathological-length inputs | unit | (same file; property test with worst-case inputs) | ❌ Wave 0 |
-| DET-07 (e2e) | Two simultaneous dispatches for same test → only one heal runs (concurrency block evaluates) | manual / e2e | `gh workflow run e2e-heal-self.yml` × 2 in rapid succession; verify `gh run list` shows queued, not parallel | manual-only (requires GitHub Actions to evaluate concurrency) |
+| DET-07 (e2e) | Two simultaneous dispatches for same test → only one heal runs (concurrency block evaluates). **Phase 04 plan must add the `concurrency:` block to `e2e-heal-self.yml` for this to be verifiable.** | manual / e2e | `gh workflow run e2e-heal-self.yml` × 2 in rapid succession; verify `gh run list` shows queued, not parallel | manual-only (requires GitHub Actions to evaluate concurrency) |
 | FIX-07 | Each of 4 classes routes to its prompt template | unit | `./node_modules/.bin/vitest run src/healer/prompt-assembler.test.ts -t "FIX-07"` | partial (test file exists; new cases) |
 | FIX-07 | Classifier maps each error-signature shape to expected class | unit | `./node_modules/.bin/vitest run src/ingest/classifier.test.ts` | ❌ Wave 0 |
 | FIX-07 | LLM proposal `fixClass: 'assertions'` overrides `fixClassHint: 'selectors'` correctly | unit | `./node_modules/.bin/vitest run src/healer/index.test.ts -t "fixClass-override"` | partial (extend existing) |
@@ -869,7 +920,7 @@ No missing dependencies. No fallback paths needed.
 - [ ] `src/healer/prompts/assertions-no-trace.md` + `assertions-with-trace.md` + `slow-no-trace.md` + `slow-with-trace.md` — FIX-07 templates
 - [ ] `src/shared/loop-guard.test.ts` — extend existing tests for `countHealsForTest` + `shouldSkipHeal`
 - [ ] `fixture/tests/broken-assertion.spec.ts` — new fixture for the e2e assertion-class verification
-- [ ] `e2e-heal-self.yml` extension — second job for assertion-class fixture (or a separate workflow file)
+- [ ] `e2e-heal-self.yml` modifications — (a) add `concurrency:` block keyed on `inputs.concurrencyKey` for SC #2 verification; (b) add second dispatch job for assertion-class fixture (or a separate workflow file); (c) add the new flat dispatch inputs (`flakeRate` / `windowDays` / `runCount` / `concurrencyKey`)
 - [ ] Security-lint extension — grep for `git config --global` regression (WR-01 verify)
 
 *(All other tests are extensions of existing files — no framework-install needed.)*
