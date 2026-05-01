@@ -64,13 +64,80 @@ export function renderPrBody(args: OpenHealerPrArgs): string {
   return lines.filter((l) => l !== '').join('\n');
 }
 
+/**
+ * PRI-04 dedup query. Returns the first matching open PR or null.
+ *
+ * Uses `pulls.list({ head: 'owner:branch' })` — the healer branch name is
+ * deterministic per (test, sha), so a head filter is exact (Pattern 3).
+ * Pitfall 3: the head filter format MUST be `${owner}:${branch}` — bare branch
+ * name returns ALL open PRs.
+ */
+async function findExistingOpenPr(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<{ number: number; html_url: string } | null> {
+  try {
+    const { data: prs } = await octokit.rest.pulls.list({
+      owner,
+      repo,
+      state: 'open',
+      head: `${owner}:${branch}`, // Pitfall 3: 'user:ref-name' format
+      per_page: 1,
+    });
+    return prs.length > 0 ? { number: prs[0].number, html_url: prs[0].html_url } : null;
+  } catch (err) {
+    core.warning(
+      `PRI-04: dedup query failed for ${owner}:${branch} — ${String(err)}. Proceeding with create.`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Add a comment to an existing PR. Issues and PRs share the comments API
+ * (PRs are issues with extra fields).
+ */
+async function commentOnPr(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  body: string,
+): Promise<void> {
+  await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: prNumber,
+    body,
+  });
+}
+
 export async function openHealerPr(args: OpenHealerPrArgs): Promise<string> {
   const octokit = new Octokit({ auth: args.patToken });
 
   const title = `[playwright-healer] Fix flaky ${args.testTitle}`;
   const body = renderPrBody(args);
 
-  const { data: pr } = await octokit.pulls.create({
+  // PRI-04 dedup — query BEFORE create
+  const existing = await findExistingOpenPr(octokit, args.owner, args.repo, args.branch);
+  if (existing) {
+    const commentBody =
+      `## Re-trigger evidence\n\n` +
+      `${body}\n\n` +
+      `_Comment added by Phase 04 PRI-04 dedup; original PR remains open for review._`;
+    await commentOnPr(octokit, args.owner, args.repo, existing.number, commentBody);
+    await core.summary
+      .addRaw(
+        `## Healer PR updated (dedup)\n\n[${title}](${existing.html_url})\n\nNew evidence appended as comment.`,
+      )
+      .write();
+    return existing.html_url;
+  }
+
+  // No existing — original create path
+  const { data: pr } = await octokit.rest.pulls.create({
     owner: args.owner,
     repo: args.repo,
     title,
