@@ -276,3 +276,37 @@ describe('pr-writer — PRI-04 dedup (Test 7: comment body includes new evidence
     expect(commentCall.body).toContain('80%');
   });
 });
+
+// ── WR-02: renderPrBody total===0 special-case ───────────────────────────────
+
+describe('pr-writer — WR-02 (Test 3: sentinel passRate=0 total=0 renders skipped)', () => {
+  it('renders "skipped (post-fix validation disabled)" when total === 0', () => {
+    const body = renderPrBody(mkArgs({
+      validation: { passed: 0, total: 0, passRate: 0, perRun: [] },
+    }));
+    expect(body).toMatch(/skipped \(post-fix validation disabled\)/);
+    // Must NOT render "100%" or "0/0" which misled reviewers
+    expect(body).not.toMatch(/100%/);
+    expect(body).not.toMatch(/0\/0/);
+  });
+
+  it('still renders the cost line when validation is skipped', () => {
+    const body = renderPrBody(mkArgs({
+      validation: { passed: 0, total: 0, passRate: 0, perRun: [] },
+      costUsd: 0.0123,
+    }));
+    expect(body).toMatch(/\$0\.0123/);
+  });
+});
+
+describe('pr-writer — WR-02 (Test 4: backwards compat for non-zero total)', () => {
+  it('renders pass rate percentage when total > 0', () => {
+    const body = renderPrBody(mkArgs({
+      validation: { passed: 9, total: 10, passRate: 0.9, perRun: [{ status: 'passed' as const, durationMs: 100 }] },
+    }));
+    expect(body).toMatch(/90%/);
+    expect(body).toMatch(/9\/10/);
+    // Must NOT show the skipped message
+    expect(body).not.toMatch(/skipped \(post-fix validation disabled\)/);
+  });
+});

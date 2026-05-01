@@ -29,10 +29,29 @@ export interface OpenHealerPrArgs {
 }
 
 export function renderPrBody(args: OpenHealerPrArgs): string {
-  const passPct = (args.validation.passRate * 100).toFixed(0);
-  const perRunRow = args.validation.perRun
-    .map((r, i) => `| ${i + 1} | ${r.status} | ${r.durationMs}ms |`)
-    .join('\n');
+  // WR-02: when total === 0, post-fix validation was skipped (demo mode).
+  // Render an explicit "skipped" message rather than computing 0/0 → 100%
+  // which misled reviewers about the heal's evidence.
+  let validationLines: string[];
+  if (args.validation.total === 0) {
+    validationLines = [
+      `Pass rate: **skipped (post-fix validation disabled)**`,
+      `Cost spent: **$${args.costUsd.toFixed(4)}**`,
+    ];
+  } else {
+    const passPct = (args.validation.passRate * 100).toFixed(0);
+    const perRunRow = args.validation.perRun
+      .map((r, i) => `| ${i + 1} | ${r.status} | ${r.durationMs}ms |`)
+      .join('\n');
+    validationLines = [
+      `Pass rate: **${passPct}%** (${args.validation.passed}/${args.validation.total} reruns at \`--retries=0\`)`,
+      `Cost spent: **$${args.costUsd.toFixed(4)}**`,
+      '',
+      `| # | Status | Duration |`,
+      `| --- | --- | --- |`,
+      perRunRow,
+    ];
+  }
 
   const lines: string[] = [
     `## Root cause`,
@@ -45,12 +64,7 @@ export function renderPrBody(args: OpenHealerPrArgs): string {
     args.rationale,
     '',
     `## Validation`,
-    `Pass rate: **${passPct}%** (${args.validation.passed}/${args.validation.total} reruns at \`--retries=0\`)`,
-    `Cost spent: **$${args.costUsd.toFixed(4)}**`,
-    '',
-    `| # | Status | Duration |`,
-    `| --- | --- | --- |`,
-    perRunRow,
+    ...validationLines,
     '',
     `## Links`,
     `- [Triggering run](${args.triggeringRunUrl})`,

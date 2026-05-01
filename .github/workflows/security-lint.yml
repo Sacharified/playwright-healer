@@ -179,3 +179,30 @@ jobs:
             exit 1
           fi
           echo "OK: no HTTP client call-sites in src/"
+
+      # ──────────────────────────────────────────────────────────────────
+      # CHECK 5 — WR-01 regression (no global gitconfig PAT writes)
+      # Phase 04: must NOT regress the global gitconfig auth pattern.
+      # The action uses inline `git -c http.extraheader` per-invocation
+      # (fix-applier.ts ~L127). A reintroduction of `git config --global
+      # url.insteadOf` would write the PAT to the runner's ~/.gitconfig.
+      # ──────────────────────────────────────────────────────────────────
+      - name: 'Check 5: WR-01 regression — no global gitconfig PAT writes'
+        shell: bash
+        run: |
+          set -e
+          # Phase 04 WR-01: must NOT regress the global gitconfig auth pattern.
+          # The action uses inline `git -c http.extraheader` per-invocation
+          # (fix-applier.ts ~L127). A reintroduction of `git config --global
+          # url.insteadOf` would write the PAT to the runner's ~/.gitconfig.
+          MATCHES=$(grep -rn 'git config --global url.insteadOf' \
+            action.yml src/ .github/workflows/ \
+            --exclude-dir=node_modules --exclude='*.snap' \
+            --exclude='security-lint.yml' \
+            || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::WR-01 regression detected — global gitconfig PAT writes:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "WR-01 verified: no global gitconfig PAT writes."

@@ -635,3 +635,49 @@ describe('run() — Phase 04 heal-event write sites', () => {
     expect(mockSetFailed).not.toHaveBeenCalled();
   });
 });
+
+// ── WR-03 + WR-02 fix tests ───────────────────────────────────────────────────
+
+describe('run() — WR-03 (unconditional validate fix)', () => {
+  it('WR-03: validate NOT called when skipDeterministicCheck=true', async () => {
+    // With WR-03 fix, validate() is skipped entirely — not just the gate check
+    mockRunAgent.mockResolvedValue({
+      proposal: { diff: 'diff', rootCause: 'r', rationale: 'r', fixClass: 'selectors' },
+      stats: { usdSpent: 0.01, turnsUsed: 1 },
+    });
+    mockApplyFix.mockResolvedValue({ branch: 'healer/fix-branch' });
+    // Post-fix validate mock (will be called once for post-fix validation only)
+    mockValidate.mockResolvedValue({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    await run({ ...baseConfig, skipDeterministicCheck: true });
+    // validate() called ONCE (post-fix only) NOT twice (sanity + post-fix)
+    expect(mockValidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('WR-03: validate IS called when skipDeterministicCheck=false (production behavior)', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] }) // sanity
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] }); // post-fix
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run({ ...baseConfig, skipDeterministicCheck: false });
+    // validate() called TWICE (sanity + post-fix)
+    expect(mockValidate).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('run() — WR-02 (sentinel passRate fix)', () => {
+  it('WR-02: skipPostFixValidation=true sends passRate:0 + total:0 to openHealerPr (not passRate:1)', async () => {
+    mockValidate.mockResolvedValueOnce({ passed: 3, total: 3, passRate: 1, perRun: [] });
+    mockRunAgent.mockResolvedValue({
+      proposal: { diff: 'diff', rootCause: 'r', rationale: 'r', fixClass: 'selectors' },
+      stats: { usdSpent: 0.01, turnsUsed: 1 },
+    });
+    mockApplyFix.mockResolvedValue({ branch: 'healer/fix-branch' });
+    await run({ ...baseConfig, skipPostFixValidation: true });
+    const prArgs = mockOpenPr.mock.calls[0][0];
+    // WR-02: sentinel must have passRate: 0 and total: 0 (NOT passRate: 1)
+    expect(prArgs.validation.passRate).toBe(0);
+    expect(prArgs.validation.total).toBe(0);
+    expect(prArgs.validation.passed).toBe(0);
+    expect(Array.isArray(prArgs.validation.perRun)).toBe(true);
+  });
+});
