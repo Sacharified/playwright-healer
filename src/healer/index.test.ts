@@ -13,9 +13,11 @@ const {
   mockSupervisorStop,
   mockRunAgent,
   mockCreateGeminiAdapter,
+  mockCreateGithubAdapter,
 } = vi.hoisted(() => {
   const mockRunAgent = vi.fn();
   const mockCreateGeminiAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
+  const mockCreateGithubAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
   return {
     mockBundleContext: vi.fn(),
     mockValidate: vi.fn(),
@@ -27,6 +29,7 @@ const {
     mockSupervisorStop: vi.fn(),
     mockRunAgent,
     mockCreateGeminiAdapter,
+    mockCreateGithubAdapter,
   };
 });
 
@@ -45,6 +48,7 @@ vi.mock('./app-supervisor.js', () => ({
   readPidFile: vi.fn(),
 }));
 vi.mock('./adapters/gemini.js', () => ({ createGeminiAdapter: mockCreateGeminiAdapter }));
+vi.mock('./adapters/github.js', () => ({ createGithubAdapter: mockCreateGithubAdapter }));
 vi.mock('./adapters/anthropic.js', () => ({
   anthropicAdapter: { runAgent: vi.fn().mockRejectedValue(new Error('anthropic adapter not implemented in Phase 3')) },
 }));
@@ -123,8 +127,9 @@ beforeEach(() => {
   mockApplyFix.mockResolvedValue({ branch: 'playwright-healer/X-abc1234', commitSha: 'deadbeef' });
   mockOpenPr.mockResolvedValue('https://github.com/acme/repo/pull/1');
   mockOpenIssue.mockResolvedValue('https://github.com/acme/repo/issues/1');
-  // Re-apply mockReturnValue for createGeminiAdapter since clearAllMocks clears implementations
+  // Re-apply mockReturnValue since clearAllMocks clears implementations
   mockCreateGeminiAdapter.mockReturnValue({ runAgent: mockRunAgent });
+  mockCreateGithubAdapter.mockReturnValue({ runAgent: mockRunAgent });
 });
 
 describe('run() — D-09 routing tree', () => {
@@ -277,6 +282,38 @@ describe('run() — provider switch (D-01)', () => {
     await run(baseConfig);
     expect(mockCreateGeminiAdapter).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: 'test', maxTurns: 30, maxBudgetUsd: 2.0, baseUrl: 'http://localhost:3000',
+    }));
+  });
+
+  it('config.provider=github → createGithubAdapter is called with config values + default endpoint', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run({ ...baseConfig, provider: 'github' });
+    expect(mockCreateGithubAdapter).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'test',
+      maxTurns: 30,
+      baseUrl: 'http://localhost:3000',
+      endpoint: 'https://models.github.ai/inference',
+      model: 'openai/gpt-4.1',
+    }));
+  });
+
+  it('config.provider=github → custom api_endpoint and model override defaults', async () => {
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run({
+      ...baseConfig,
+      provider: 'github',
+      model: 'openai/gpt-4o-mini',
+      apiEndpoint: 'https://models.example.test/inference',
+    });
+    expect(mockCreateGithubAdapter).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'openai/gpt-4o-mini',
+      endpoint: 'https://models.example.test/inference',
     }));
   });
 });

@@ -11,7 +11,12 @@ inputs:
     required: false
     default: ''
   api_key:
-    description: 'Inference-provider API key (Anthropic, Gemini, or — for Ollama localhost — may be empty)'
+    description: |
+      Inference-provider API key. Distinct from healer_token / github_token
+      (those are PR-creation and runner tokens). For provider=github, pass a
+      GitHub PAT with the `models:read` scope (a different PAT than healer_token,
+      which needs `repo`). For Ollama localhost it may be empty.
+      Example: api_key: ${{ secrets.GH_MODELS_TOKEN }}  # for provider: github
     required: false
   healer_token:
     description: 'PAT or GitHub App token required for PR creation and workflow_dispatch'
@@ -37,7 +42,7 @@ inputs:
     required: false
     default: ''
   provider:
-    description: 'Inference provider: anthropic | gemini | ollama'
+    description: 'Inference provider: anthropic | gemini | github | ollama'
     required: false
     default: 'anthropic'
   model:
@@ -45,7 +50,7 @@ inputs:
     required: false
     default: ''
   api_endpoint:
-    description: 'Custom provider endpoint. Mainly useful for self-hosted Ollama (e.g. http://localhost:11434). Empty string uses provider default.'
+    description: 'Custom provider endpoint. Useful for self-hosted Ollama (http://localhost:11434) or to override the GitHub Models endpoint (default https://models.github.ai/inference). Empty string uses provider default.'
     required: false
     default: ''
 

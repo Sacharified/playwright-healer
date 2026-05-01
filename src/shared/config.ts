@@ -6,15 +6,27 @@ import * as core from '@actions/core';
 const ModeEnum = z.enum(['ingest', 'heal', 'dry-run'])
   .describe('mode must be one of: ingest, heal, dry-run');
 
-const ProviderEnum = z.enum(['anthropic', 'gemini', 'ollama'])
-  .describe('provider must be one of: anthropic, gemini, ollama');
+const ProviderEnum = z.enum(['anthropic', 'gemini', 'github', 'ollama'])
+  .describe('provider must be one of: anthropic, gemini, github, ollama');
 
 export type Provider = z.infer<typeof ProviderEnum>;
 
 export const DEFAULT_MODELS: Record<Provider, string> = {
   anthropic: 'claude-sonnet-4-6',
   gemini:    'gemini-2.5-pro',
+  // GitHub Models — OpenAI-compatible inference endpoint. Free tier available
+  // for development. gpt-4.1 (the full model, not -mini) is the default because
+  // -mini got hunk-header arithmetic wrong on real heals, producing patches
+  // that `git apply` rejected. The full gpt-4.1 stays inside the same free tier.
+  github:    'openai/gpt-4.1',
   ollama:    'llama3.1',
+};
+
+// Default OpenAI-compatible endpoints per provider. Adapters that don't take
+// a configurable base URL (current: anthropic / gemini — SDK-managed; ollama —
+// localhost) are absent from this map.
+export const DEFAULT_ENDPOINTS: Partial<Record<Provider, string>> = {
+  github: 'https://models.github.ai/inference',
 };
 
 // Factory form: lets tests override defaults without module-level state.

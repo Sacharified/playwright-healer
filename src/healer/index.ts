@@ -19,7 +19,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import type { Config } from '../shared/config.js';
-import { DEFAULT_MODELS } from '../shared/config.js';
+import { DEFAULT_MODELS, DEFAULT_ENDPOINTS } from '../shared/config.js';
 import { ALLOWED_TOOLS } from '../shared/security-contract.js';
 import { DispatchPayload } from './dispatch-payload.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from './adapter.js';
@@ -33,6 +33,7 @@ import { validate } from './validator.js';
 import type { ValidationResult } from './validator.js';
 import { applyFix } from './fix-applier.js';
 import { createGeminiAdapter } from './adapters/gemini.js';
+import { createGithubAdapter } from './adapters/github.js';
 import { anthropicAdapter } from './adapters/anthropic.js';
 import { ollamaAdapter } from './adapters/ollama.js';
 import { openHealerPr } from './pr-writer.js';
@@ -59,6 +60,14 @@ function selectAdapter(config: Config): Adapter {
         baseUrl: config.baseUrl,
         maxTurns: config.maxTurns,
         maxBudgetUsd: config.maxBudgetUsd,
+      });
+    case 'github':
+      return createGithubAdapter({
+        apiKey: config.apiKey,
+        model: config.model.length > 0 ? config.model : DEFAULT_MODELS.github,
+        endpoint: config.apiEndpoint.length > 0 ? config.apiEndpoint : (DEFAULT_ENDPOINTS.github ?? ''),
+        baseUrl: config.baseUrl,
+        maxTurns: config.maxTurns,
       });
     case 'anthropic':
       return anthropicAdapter; // throws on call (D-01 stub)

@@ -6,13 +6,16 @@
 # Useful for fast iteration on src/healer/* and src/shared/*.
 #
 # Required env (caller exports):
-#   GEMINI_API_KEY  — Gemini API key (free-tier OK with gemini-2.5-flash)
 #   HEALER_PAT      — GitHub PAT with `repo` scope on this repo
+#   one of:
+#     GEMINI_API_KEY        — for PROVIDER=gemini (default; free-tier OK with gemini-2.5-flash)
+#     GITHUB_MODELS_TOKEN   — for PROVIDER=github (PAT with `models:read` scope; free tier)
+#     INFERENCE_API_KEY     — generic fallback used as INPUT_API_KEY directly
 #
 # Optional env:
 #   GITHUB_REPOSITORY  — owner/name (default: derived from `git remote get-url origin`)
-#   MODEL              — provider model id (default: gemini-2.5-flash)
-#   PROVIDER           — anthropic | gemini | ollama (default: gemini)
+#   MODEL              — provider model id (defaults: gemini→gemini-2.5-flash, github→openai/gpt-4.1)
+#   PROVIDER           — anthropic | gemini | github | ollama (default: gemini)
 #   FIXTURE_PORT       — default 8080
 #   COMMIT_SHA         — heal target SHA (default: current HEAD)
 #
@@ -28,8 +31,30 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # ── Validate required env ────────────────────────────────────────────────
-: "${GEMINI_API_KEY:?Set GEMINI_API_KEY in env}"
 : "${HEALER_PAT:?Set HEALER_PAT in env (PAT with repo scope on this repo)}"
+
+PROVIDER="${PROVIDER:-gemini}"
+
+# Resolve the inference API key from whichever provider-specific env var was set.
+# Order: explicit INFERENCE_API_KEY override → PROVIDER-specific var → error.
+case "$PROVIDER" in
+  gemini)
+    INFERENCE_API_KEY="${INFERENCE_API_KEY:-${GEMINI_API_KEY:-}}"
+    [ -n "$INFERENCE_API_KEY" ] || { echo "PROVIDER=gemini requires GEMINI_API_KEY (or INFERENCE_API_KEY)"; exit 1; }
+    : "${MODEL:=gemini-2.5-flash}"
+    ;;
+  github)
+    INFERENCE_API_KEY="${INFERENCE_API_KEY:-${GITHUB_MODELS_TOKEN:-}}"
+    [ -n "$INFERENCE_API_KEY" ] || { echo "PROVIDER=github requires GITHUB_MODELS_TOKEN (PAT with models:read scope) or INFERENCE_API_KEY"; exit 1; }
+    : "${MODEL:=openai/gpt-4.1}"
+    ;;
+  anthropic|ollama)
+    INFERENCE_API_KEY="${INFERENCE_API_KEY:-}"
+    ;;
+  *)
+    echo "Unknown PROVIDER=$PROVIDER. Expected: anthropic | gemini | github | ollama"; exit 1
+    ;;
+esac
 
 # ── Resolve GITHUB_REPOSITORY from origin remote if not given ────────────
 if [ -z "${GITHUB_REPOSITORY:-}" ]; then
@@ -98,9 +123,9 @@ EOF
 # identifiers. Only override the inputs that don't have safe Zod defaults;
 # everything else falls through to src/shared/config.ts defaults.
 export INPUT_MODE=heal
-export INPUT_PROVIDER="${PROVIDER:-gemini}"
-export INPUT_MODEL="${MODEL:-gemini-2.5-flash}"
-export INPUT_API_KEY="$GEMINI_API_KEY"
+export INPUT_PROVIDER="$PROVIDER"
+export INPUT_MODEL="$MODEL"
+export INPUT_API_KEY="$INFERENCE_API_KEY"
 export INPUT_HEALER_TOKEN="$HEALER_PAT"
 export INPUT_GITHUB_TOKEN="$HEALER_PAT"
 export INPUT_BASE_URL="http://localhost:$FIXTURE_PORT"
@@ -132,7 +157,7 @@ export RUNNER_TEMP="${TMPDIR:-/tmp}"
 # ── Run the action's TS entry point ──────────────────────────────────────
 # Use the action's own pinned tsx — same spawn shape as action.yml Step 6.
 echo "→ heal mode against $GITHUB_REPOSITORY @ ${HEAD_SHA:0:7}"
-echo "→ provider=${PROVIDER:-gemini} model=${MODEL:-gemini-2.5-flash}"
+echo "→ provider=$PROVIDER model=$MODEL"
 echo "→ pushes branch + opens PR on $GITHUB_REPOSITORY on success"
 echo
 exec ./node_modules/.bin/tsx src/index.ts
