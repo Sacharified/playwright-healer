@@ -88,7 +88,8 @@
 - [ ] **FIX-04**: The agent returns a structured proposal: `{ rootCause, fixClass, diff, rationale }`. The diff is applied to a working branch by the fix-applier — the agent itself does not have `Write` or `Edit` tools
 - [ ] **FIX-05**: The fix-applier rebases the working branch onto `origin/$(default_branch)` before applying the diff, so stale SHAs don't produce merge conflicts downstream
 - [ ] **FIX-06**: A diff-lint pass runs after the patch applies and fails the healer (without opening a PR) if the diff contains: `waitForTimeout`, positional selectors, relaxed assertion matchers, or touches any path outside the configured test-paths
-- [ ] **FIX-07**: The healer supports all four fix classes: selectors, waits/timing, assertions, slow-test optimizations, each with its own system-prompt section; classes can be individually disabled via CFG-04
+- [x] **FIX-07
+**: The healer supports all four fix classes: selectors, waits/timing, assertions, slow-test optimizations, each with its own system-prompt section; classes can be individually disabled via CFG-04
 - [ ] **FIX-08**: When the agent returns "no fix proposable" or its proposal fails diff-lint, the healer transitions to issue-fallback (PRI-03)
 
 ### Validation (VAL)

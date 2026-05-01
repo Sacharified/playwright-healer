@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 4 context gathered
-last_updated: "2026-05-01T18:12:08.762Z"
+stopped_at: Completed 04-02-PLAN.md — FIX-07 full fix classes (assertions + slow)
+last_updated: "2026-05-01T23:15:13.224Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 10
   completed_phases: 6
   total_plans: 38
-  completed_plans: 35
-  percent: 92
+  completed_plans: 37
+  percent: 97
 ---
 
 # Project State
@@ -63,6 +63,7 @@ Progress: [██████████] 100%
 | Phase 01-security-scaffold-composite-packaging P06 | 5m | 1 tasks | 1 files |
 | Phase 01.2 P01 | 3min | 3 tasks | 2 files |
 | Phase 01.3 P01 | 15min | 4 tasks | 5 files |
+| Phase 04-auto-dispatch-full-fix-classes-deduplication P02 | 8 | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,9 @@ Recent decisions affecting current work:
 - Phase 03.1 fix-applier scope-leak: prior `git apply --3way + git add -A` swept untracked files (.healer/, package-lock.json) into commit; replaced with atomic `git apply --3way --index` so only patched files are staged
 - Phase 03.1 fix-applier push: original `git push -u origin <branch>` rejected on re-dispatch (deterministic branch name reuse); --force-with-lease rejected with stale-info on shallow clones; final answer is plain --force given the playwright-healer/* namespace is bot-exclusive
 - Phase 03.1 Rule 3 auto-fix: src/index.ts was missing `core.getInput()` calls for the three skip-* flags (Plan 01 added schema fields, Plan 02 added action.yml inputs + env vars, but src/index.ts wire-through was missed); fixed in commit 10c8949
+- FIX-07 cascade order: adapter.ts FIRST, parseFinalText adapters follow — TypeScript enforces this at compile time
+- classifyFixClass uses static module-scope regex literals only — input never reaches RegExp constructor (T-04-04 mitigation)
+- CFG-04 disable emits core.warning (not silent skip) — surfaces operator-actionable signal in step summary
 
 ### Pending Todos
 
@@ -131,8 +135,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 4 context gathered
-Resume file: --resume-file
+Last session: 2026-05-01T23:15:13.221Z
+Stopped at: Completed 04-02-PLAN.md — FIX-07 full fix classes (assertions + slow)
+Resume file: None
 
 **Planned Phase:** 04 (auto-dispatch-full-fix-classes-deduplication) — 5 plans — 2026-05-01T18:12:08.757Z
