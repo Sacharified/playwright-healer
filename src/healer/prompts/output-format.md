@@ -5,7 +5,7 @@ Emit exactly one JSON object as your final response (no surrounding prose):
 ```json
 {
   "rootCause": "<one-sentence explanation of why the test fails>",
-  "fixClass": "selectors" | "waits",
+  "fixClass": "selectors" | "waits" | "assertions" | "slow",
   "diff": "<unified-diff format, scoped to the failing test file>",
   "rationale": "<one-paragraph explanation of why this fix is correct and stable>"
 }

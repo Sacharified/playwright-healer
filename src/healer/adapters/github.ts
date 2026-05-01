@@ -41,6 +41,11 @@ import { BudgetExhausted } from '../budget.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from '../adapter.js';
 import type { ContextBundle } from '../types.js';
 
+// FIX-07: Allow-list of all valid fixClass values (T-04-04 mitigation — LLM-controlled
+// field validated via includes() guard before casting; rejects any value outside the four).
+const VALID_CLASSES = ['selectors', 'waits', 'assertions', 'slow'] as const;
+type FixClass = typeof VALID_CLASSES[number];
+
 export interface GithubAdapterOpts {
   apiKey: string;
   model: string;          // e.g., 'openai/gpt-4.1' (DEFAULT_MODELS.github)
@@ -335,13 +340,14 @@ function parseFinalText(text: string): FixProposal | NoFixProposable {
     const p = parsed as Record<string, unknown>;
     if (
       typeof p.rootCause === 'string' &&
-      (p.fixClass === 'selectors' || p.fixClass === 'waits') &&
+      typeof p.fixClass === 'string' &&
+      VALID_CLASSES.includes(p.fixClass as FixClass) &&
       typeof p.diff === 'string' &&
       typeof p.rationale === 'string'
     ) {
       return {
         rootCause: p.rootCause,
-        fixClass: p.fixClass as 'selectors' | 'waits',
+        fixClass: p.fixClass as FixClass,
         diff: p.diff,
         rationale: p.rationale,
       };

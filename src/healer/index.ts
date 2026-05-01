@@ -202,6 +202,15 @@ export async function run(config: Config): Promise<void> {
       return;
     }
 
+    // ── Phase 04 FIX-07 observability: log when the agent overrides the dispatch hint.
+    // The agent has authority — it observes the failure live (or via trace) and may
+    // reclassify based on evidence the classifier didn't have. The hint is advisory.
+    if (proposal.fixClass !== payload.fixClassHint) {
+      core.info(
+        `Agent overrode fixClassHint: hinted=${payload.fixClassHint}, chose=${proposal.fixClass}`,
+      );
+    }
+
     // ── Step 8: Diff-lint (FIX-06) ──────────────────────────────────────
     const findings = lintDiff(proposal.diff);
     if (!config.skipDiffLint && findings.length > 0) {

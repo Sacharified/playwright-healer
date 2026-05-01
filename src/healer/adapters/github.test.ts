@@ -316,6 +316,48 @@ describe('githubAdapter — FIX-04 result parsing + stats contract', () => {
   });
 });
 
+describe('githubAdapter — FIX-07 parseFinalText class widening', () => {
+  it('accepts fixClass: assertions (FIX-07 — assertions class must not be rejected)', async () => {
+    const assertionsJson = JSON.stringify({
+      rootCause: 'Assertion wrong',
+      fixClass: 'assertions',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'correct expected value',
+    });
+    mockFetch.mockResolvedValueOnce(finalAnswer(assertionsJson));
+    const adapter = createGithubAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ fixClass: 'assertions' });
+  });
+
+  it('accepts fixClass: slow (FIX-07 — slow class must not be rejected)', async () => {
+    const slowJson = JSON.stringify({
+      rootCause: 'Test too slow',
+      fixClass: 'slow',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'use Promise.all to overlap waits',
+    });
+    mockFetch.mockResolvedValueOnce(finalAnswer(slowJson));
+    const adapter = createGithubAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ fixClass: 'slow' });
+  });
+
+  it('rejects fixClass: unknown-class (negative case stays narrow)', async () => {
+    const unknownJson = JSON.stringify({
+      rootCause: 'Something',
+      fixClass: 'unknown-class',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'whatever',
+    });
+    mockFetch.mockResolvedValueOnce(finalAnswer(unknownJson));
+    const adapter = createGithubAdapter(makeOpts());
+    await expect(adapter.runAgent(minimalContext, 'system', [])).rejects.toThrow(
+      /Agent JSON does not match FixProposal or NoFixProposable shape/,
+    );
+  });
+});
+
 describe('githubAdapter — HEA-06 inner cleanup', () => {
   it('closes mcpClient on success', async () => {
     mockFetch.mockResolvedValueOnce(finalAnswer(VALID_FIX_PROPOSAL_JSON));

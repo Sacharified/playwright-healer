@@ -77,6 +77,7 @@ vi.mock('@actions/github', () => ({
 
 import { run } from './index.js';
 import { BudgetExhausted } from './budget.js';
+import * as core from '@actions/core';
 
 const baseConfig: Config = {
   mode: 'heal',
@@ -434,5 +435,49 @@ describe('run() — Phase 03.1 demo-mode skip flags (HEA-04 / HEA-05)', () => {
     // perRun must be an array (length 0 is OK), never undefined.
     const call = mockOpenPr.mock.calls[0][0];
     expect(Array.isArray(call.validation.perRun)).toBe(true);
+  });
+});
+
+describe('run() — FIX-07 LLM override observability (RESEARCH §FIX-07 Architecture line 446)', () => {
+  it('logs Agent overrode fixClassHint when agent returns a different fixClass than hinted', async () => {
+    // Dispatch payload hinted 'selectors'; agent returns 'assertions'
+    mockPayload = {
+      inputs: {
+        ...validPayload,
+        fixClassHint: 'selectors',
+      },
+    };
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult({
+      rootCause: 'Assertion wrong',
+      fixClass: 'assertions',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'correct expected value',
+    }));
+    await run(baseConfig);
+    expect(core.info).toHaveBeenCalledWith(
+      expect.stringMatching(/Agent overrode fixClassHint: hinted=selectors, chose=assertions/),
+    );
+  });
+
+  it('does NOT log override message when agent fixClass matches fixClassHint', async () => {
+    // Dispatch payload hinted 'selectors'; agent returns 'selectors' — no override
+    mockPayload = {
+      inputs: {
+        ...validPayload,
+        fixClassHint: 'selectors',
+      },
+    };
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run(baseConfig);
+    const overrideCallMade = (core.info as ReturnType<typeof vi.fn>).mock.calls.some(
+      (args: unknown[]) => typeof args[0] === 'string' && args[0].includes('Agent overrode fixClassHint'),
+    );
+    expect(overrideCallMade).toBe(false);
   });
 });
