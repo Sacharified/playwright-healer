@@ -820,19 +820,21 @@ CONTEXT specifics line 116 asks: "PLAN.md should include a 're-run the 03.1 demo
 
 **Items needing user confirmation before execution:** A4, A7, A8 are `[ASSUMED]`. A1, A2, A3, A5, A6 are verified. A4 + A7 (classifier reliability) and A8 (default-on policy) are the discretion-area decisions CONTEXT explicitly invites — flag them in PLAN.md so the planner can surface them in plan-check.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Heal-event schema vs `[skip-healer]` commit count for D-04 cap query (Pitfall 7)** — option (2) (new NDJSON schema) is recommended; option (1) (count `[skip-healer]` commits) is acceptable. Planner picks one; lock the choice in PLAN.md.
    - What we know: Both satisfy D-04's intent.
    - What's unclear: Whether an OBS-01 v2 cost dashboard would prefer option (2)'s richer event log.
    - Recommendation: Option (2). Small one-time addition; future-proof.
+   - **RESOLVED:** Plan 04-04 locks Option (2) — new NDJSON schema `runs/YYYY/MM/DD-heals.ndjson` with `appendHealEvent` helper mirroring `appendRecord` retry-loop pattern. See `must_haves.artifacts` in 04-04-PLAN.md.
 
 2. **Workflow file name for dispatch** — DET-05 says "default `.github/workflows/playwright-healer.yml`". Should that be a `healer_workflow_file` action input (configurable) or hard-coded?
    - What we know: Hard-coded matches REQUIREMENTS phrasing.
    - What's unclear: Whether multi-workflow consumers (e.g., separate per-environment heal workflows) need to override.
    - Recommendation: Make it a config input (`healer_workflow_file`, default `'playwright-healer.yml'`). One-line cost; makes the action more reusable.
+   - **RESOLVED:** Plan 04-01 adds `healer_workflow_file` action input (default `'playwright-healer.yml'`) + `healerWorkflowFile` config field + Zod parse. The `workflowFile` parameter on `FireDispatchArgs` is plumbed from `config.healerWorkflowFile` at the call site in `src/ingest/index.ts` Step 9.
 
-3. **`DispatchPayload` schema migration — CLOSED** (3 flat inputs, not nested). The receive-side schema in `src/healer/dispatch-payload.ts` widens like this:
+3. **`DispatchPayload` schema migration** — **RESOLVED:** 3 flat inputs, not nested. The receive-side schema in `src/healer/dispatch-payload.ts` widens like this:
 
    ```typescript
    // BEFORE (Phase 03):
@@ -856,6 +858,7 @@ CONTEXT specifics line 116 asks: "PLAN.md should include a 're-run the 03.1 demo
    - What we know: `e2e-heal-self.yml:141` explicitly sets `skip_diff_lint: 'false'` — the diff-lint is already enabled in the e2e workflow.
    - What's unclear: Whether the project default change is purely cosmetic since the demo already opts in.
    - Recommendation: Flip the default. The demo's explicit `skip_diff_lint: 'false'` becomes redundant (harmless) and any new consumer gets the safe default.
+   - **RESOLVED:** Plan 04-04 verifies via `<interfaces>` that `src/shared/config.ts:107-110` already has all three skip-flag defaults at `'false'`. No flip required — verified empirically as a no-op. The original "default flip" was speculative; the actual WR-02/WR-03 fixes (sentinel passRate misrender + unconditional-validate) land in Plan 04-04 instead.
 
 ## Environment Availability
 
