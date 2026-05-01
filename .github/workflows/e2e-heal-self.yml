@@ -18,6 +18,7 @@ name: E2E Self-Heal
 on:
   workflow_dispatch:
     inputs:
+      # Existing (Phase 03 era) — defaults retained for maintainer dispatch convenience
       testFile:
         description: 'Test file path (relative to repo root)'
         required: false
@@ -34,9 +35,34 @@ on:
         description: 'Commit SHA to heal against (blank → HEAD of main)'
         required: false
         default: ''
+      # NEW Phase 04 — flat run-stats (optional; ingest auto-dispatch always populates)
+      flakeRate:
+        description: 'Recent flake rate (0.0–1.0). Optional for manual dispatch.'
+        required: false
+        default: ''
+      windowDays:
+        description: 'Rolling window in days. Optional for manual dispatch.'
+        required: false
+        default: ''
+      runCount:
+        description: 'Recent run count. Optional for manual dispatch.'
+        required: false
+        default: ''
+      # NEW Phase 04 — DET-07 concurrency key (REQUIRED from now on; manual maintainer
+      # dispatch must compute it via slug(testFile)+slug(testTitle)+sha1(testFile::testTitle).
+      # Default value here is a sentinel so a maintainer can hand-dispatch the broken-selector
+      # fixture without computing the hash; ingest's auto-dispatch always passes the real value.
+      concurrencyKey:
+        description: 'Slug+SHA1 concurrency key per (testFile, testTitle). Compute via src/ingest/dispatch.ts buildConcurrencyKey for ingest-fired dispatches.'
+        required: true
+        default: 'manual-broken-selector-default'
 
 permissions:
   contents: read
+
+concurrency:
+  group: playwright-healer-${{ github.repository }}-${{ inputs.concurrencyKey }}
+  cancel-in-progress: false
 
 jobs:
   # ── Job 1: Red guard — the fixture test MUST fail without intervention ──
@@ -132,10 +158,13 @@ jobs:
           test_command: 'cd fixture && npx playwright test'
           max_budget_usd: '1.00'
           max_turns: '10'
-          # Demo-mode flags inherited from Phase 03.1 — fixture-ci proxy is
-          # the post-heal Job 3 below, not the action's local validator.
+          # Demo-mode flags inherited from Phase 03.1 — UPDATED Phase 04:
+          # post-fix validation re-engaged (RESEARCH §"Diff-Lint Compatibility
+          # Verification" empirically confirms the existing selector heal still
+          # passes the validator). Deterministic check stays skipped because the
+          # broken-fixture is deterministic by design (the bug is intentional).
           skip_deterministic_check: 'true'
-          skip_post_fix_validation: 'true'
+          # skip_post_fix_validation: 'true'   # REMOVED Phase 04 — validation re-engaged
           # Keep diff-lint ENABLED — it scopes the agent's diff to test files
           # only, preventing accidental modifications to action source.
           skip_diff_lint: 'false'
