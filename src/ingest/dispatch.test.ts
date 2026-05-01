@@ -7,19 +7,35 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Mock setup (hoisted by vitest because names start with 'mock') ──────────
+// ── Mock setup — use vi.hoisted to ensure refs are available during vi.mock hoisting ──
 
-const mockCreateWorkflowDispatch = vi.fn();
-const mockOctokitConstructor = vi.fn().mockImplementation(() => ({
-  rest: { actions: { createWorkflowDispatch: mockCreateWorkflowDispatch } },
+const {
+  mockCreateWorkflowDispatch,
+  mockCoreWarning,
+  mockCoreInfo,
+  mockCoreSummaryAddRaw,
+  mockCoreSummaryWrite,
+} = vi.hoisted(() => {
+  const mockCreateWorkflowDispatch = vi.fn();
+  const mockCoreWarning = vi.fn();
+  const mockCoreInfo = vi.fn();
+  const mockCoreSummaryAddRaw = vi.fn().mockReturnThis();
+  const mockCoreSummaryWrite = vi.fn().mockResolvedValue(undefined);
+  return {
+    mockCreateWorkflowDispatch,
+    mockCoreWarning,
+    mockCoreInfo,
+    mockCoreSummaryAddRaw,
+    mockCoreSummaryWrite,
+  };
+});
+
+// Octokit must be a class constructor — use vi.mock factory directly
+vi.mock('@octokit/rest', () => ({
+  Octokit: vi.fn().mockImplementation(function (this: unknown) {
+    return { rest: { actions: { createWorkflowDispatch: mockCreateWorkflowDispatch } } };
+  }),
 }));
-
-vi.mock('@octokit/rest', () => ({ Octokit: mockOctokitConstructor }));
-
-const mockCoreWarning = vi.fn();
-const mockCoreInfo = vi.fn();
-const mockCoreSummaryAddRaw = vi.fn().mockReturnThis();
-const mockCoreSummaryWrite = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@actions/core', () => ({
   warning: mockCoreWarning,
@@ -33,6 +49,7 @@ vi.mock('@actions/core', () => ({
 // Import AFTER mocks are set up
 import { fireDispatch, buildConcurrencyKey } from './dispatch.js';
 import type { Detection } from '../shared/types.js';
+import { Octokit } from '@octokit/rest';
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
 
@@ -99,12 +116,14 @@ describe('fireDispatch — DET-06 (PAT auth)', () => {
   it('constructs Octokit with the patToken, never an empty string or GITHUB_TOKEN literal', async () => {
     await fireDispatch(BASE_ARGS);
 
-    expect(mockOctokitConstructor).toHaveBeenCalledTimes(1);
-    const constructorArg = mockOctokitConstructor.mock.calls[0][0];
+    const MockedOctokit = vi.mocked(Octokit);
+    expect(MockedOctokit).toHaveBeenCalledTimes(1);
+    const constructorArg = MockedOctokit.mock.calls[0][0];
 
-    expect(constructorArg.auth).toBe('pat-test-secret');
-    expect(constructorArg.auth).not.toBe('');
-    expect(constructorArg.auth).not.toBe('GITHUB_TOKEN');
+    expect(constructorArg).toBeDefined();
+    expect((constructorArg as { auth?: string }).auth).toBe('pat-test-secret');
+    expect((constructorArg as { auth?: string }).auth).not.toBe('');
+    expect((constructorArg as { auth?: string }).auth).not.toBe('GITHUB_TOKEN');
   });
 });
 
