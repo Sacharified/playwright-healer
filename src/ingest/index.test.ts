@@ -21,6 +21,7 @@ const {
   mockShouldSkipIngest,
   mockParseReport,
   mockGlobberGlob,
+  mockClassifyFixClass,
 } = vi.hoisted(() => ({
   mockBootstrapOrGetWorktree: vi.fn(),
   mockAppendRecord: vi.fn(),
@@ -34,6 +35,7 @@ const {
   mockShouldSkipIngest: vi.fn(),
   mockParseReport: vi.fn(),
   mockGlobberGlob: vi.fn(),
+  mockClassifyFixClass: vi.fn(),
 }));
 
 vi.mock('../shared/loop-guard.js', () => ({ shouldSkipIngest: mockShouldSkipIngest }));
@@ -49,6 +51,10 @@ vi.mock('./summary-writer.js', () => ({ writeDetectionSummary: mockWriteDetectio
 vi.mock('./dispatch.js', () => ({
   fireDispatch: mockFireDispatch,
   buildConcurrencyKey: mockBuildConcurrencyKey,
+}));
+
+vi.mock('./classifier.js', () => ({
+  classifyFixClass: mockClassifyFixClass,
 }));
 
 // readWindowRecords is a module-private function in index.ts — mock fs to control it
@@ -155,6 +161,7 @@ beforeEach(() => {
   mockFireDispatch.mockResolvedValue(undefined);
   mockBuildConcurrencyKey.mockReturnValue('test-concurrency-key');
   mockRemoveWorktree.mockResolvedValue(undefined);
+  mockClassifyFixClass.mockReturnValue('selectors');
 });
 
 // ── Task 3 Test 1: enableAutoDispatch=false suppresses fireDispatch ──────────
@@ -241,3 +248,39 @@ describe('Step 8 summary-writer — log-only mode', () => {
 
 // ── Task 3 Test 7 (action.yml): verified by grep in done criteria ────────────
 // (shell-level assertion — checked separately in done criteria verification)
+
+// ── Task 2 Tests 10-11: CFG-04 per-class disable + classifier integration ────
+
+import * as core from '@actions/core';
+
+describe('Step 9 auto-dispatch — CFG-04 per-class disable (Test 10)', () => {
+  it('suppresses dispatch and emits core.warning when assertions fix class is disabled', async () => {
+    // Classifier returns 'assertions'; enableAssertionFixes is false → skip + warn
+    mockClassifyFixClass.mockReturnValue('assertions');
+    mockEvaluateThresholds.mockReturnValue([DETECTION]);
+    const config = makeConfig({
+      enableAutoDispatch: true,
+      enableAssertionFixes: false,
+    });
+    await run(config);
+
+    expect(mockFireDispatch).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringMatching(/assertions fix class disabled/),
+    );
+  });
+});
+
+describe('Step 9 auto-dispatch — classifier integration (Test 11)', () => {
+  it('calls fireDispatch with fixClassHint from classifier when all toggles are enabled', async () => {
+    // Classifier returns 'slow' — fireDispatch should receive fixClassHint: 'slow'
+    mockClassifyFixClass.mockReturnValue('slow');
+    mockEvaluateThresholds.mockReturnValue([DETECTION]);
+    const config = makeConfig({ enableAutoDispatch: true });
+    await run(config);
+
+    expect(mockFireDispatch).toHaveBeenCalledTimes(1);
+    const callArgs = mockFireDispatch.mock.calls[0][0];
+    expect(callArgs.fixClassHint).toBe('slow');
+  });
+});

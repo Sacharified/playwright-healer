@@ -37,6 +37,7 @@ import type { NdjsonRecord, NdjsonTestEntry } from '../shared/types.js';
 import { evaluateThresholds } from './threshold-evaluator.js';
 import { writeDetectionSummary } from './summary-writer.js';
 import { fireDispatch, buildConcurrencyKey } from './dispatch.js';
+import { classifyFixClass } from './classifier.js';
 
 // Read package.json version for healerVersion (composite action — no bundling)
 const require = createRequire(import.meta.url);
@@ -142,11 +143,39 @@ export async function run(config: Config): Promise<void> {
 
     // ── Step 9: AUTO-DISPATCH (DET-05/06/07, Phase 04) ──────────────────
     // CONTEXT D-01: opt-in via enable_auto_dispatch (default 'false').
-    // Heal-cap pre-gate (D-04) is added in Plan 04. Classifier hint
-    // (FIX-07) is added in Plan 02 — Plan 01 placeholder is 'selectors'.
     if (config.enableAutoDispatch && detections.length > 0) {
+      // Build a testId → latest-entry map for fixClassHint lookup (FIX-07).
+      // Last-failed-entry wins: windowRecords are ordered oldest-to-newest by
+      // file walk; any non-passed entry for a testId overwrites the prior one.
+      const latestEntryByTestId = new Map<string, NdjsonTestEntry>();
+      for (const rec of windowRecords) {
+        for (const entry of rec.tests) {
+          if (entry.outcome === 'failed' || entry.outcome === 'flaky' || entry.outcome === 'timed-out') {
+            latestEntryByTestId.set(entry.testId, entry);
+          }
+        }
+      }
+
       for (const detection of detections) {
         const [testFile, testTitle] = detection.testId.split('::', 2);
+        const latestEntry = latestEntryByTestId.get(detection.testId);
+        const fixClassHint = classifyFixClass(latestEntry?.errorSignature ?? '');
+
+        // CFG-04: per-class disable — operator can suppress a class with a warning,
+        // not a silent skip, so the action log surfaces the operator-actionable signal.
+        const enabledFor: Record<typeof fixClassHint, boolean> = {
+          selectors:  config.enableSelectorFixes,
+          waits:      config.enableWaitFixes,
+          assertions: config.enableAssertionFixes,
+          slow:       config.enableSlowFixes,
+        };
+        if (!enabledFor[fixClassHint]) {
+          core.warning(
+            `playwright-healer: ${fixClassHint} fix class disabled — skipping dispatch for ${detection.testId}`,
+          );
+          continue;
+        }
+
         await fireDispatch({
           patToken:       config.healerToken,
           owner:          github.context.repo.owner,
@@ -159,7 +188,7 @@ export async function run(config: Config): Promise<void> {
           ref:            (github.context.payload.repository as { default_branch?: string } | undefined)?.default_branch ?? 'main',
           detection,
           commitSha:      github.context.sha,
-          fixClassHint:   'selectors', // Plan 02 replaces with classifyFixClass(...)
+          fixClassHint,
           flakeRate:      detection.reason === 'flake-rate' ? detection.value : 0,
           windowDays:     detection.windowDays,
           runCount:       detection.runCount,
