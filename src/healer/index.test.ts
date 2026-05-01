@@ -99,6 +99,7 @@ const validPayload = {
   testFile: 'tests/checkout.spec.ts',
   testTitle: 'completes purchase',
   fixClassHint: 'selectors',
+  concurrencyKey: 'tests/checkout.spec.ts::completes purchase',
 };
 
 const validFixProposal = {
