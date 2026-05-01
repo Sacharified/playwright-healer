@@ -177,6 +177,13 @@ Negative grep for `git config --global url.insteadOf` in `action.yml src/ .githu
 **3. [Rule 2 - Missing] WR-02 sentinel co-located with Task 2**
 - Same rationale as WR-03 — the `passRate: 0` sentinel fix was in the same `skipPostFixValidation` block touched during Task 2's healer restructuring. Applied in Task 2, tested in Task 3.
 
+**4. [Rule 1 - Bug] Worktree leak on Guard 3 cap-hit path**
+- **Found during:** Post-task review (advisor-identified)
+- **Issue:** Step 1.5 was in a separate try-block before the main outer try. The cap-hit `return` exited `run()` without entering the outer try, so the outer `finally` block (which calls `removeWorktree`) never ran. The `/tmp` worktree leaked on every cap-hit invocation.
+- **Fix:** Merged Step 1.5 into the outer try-block. Bootstrap failure is now handled by an inner try/catch that leaves `stateWorktreePath` null on failure — the outer finally runs on all exit paths (cap-hit return, normal PR success, error throw).
+- **Files modified:** `src/healer/index.ts`, `src/healer/index.test.ts` (regression test Test 3c)
+- **Commit:** 3b37f3a
+
 ## Threat Flags
 
 None — no new network endpoints, auth paths, file access patterns, or schema changes beyond the state branch heal-event NDJSON already described in the plan's threat model (T-04-02, T-04-04, T-04-05).
@@ -202,7 +209,8 @@ Commits verified:
 - 36d945f — Task 1
 - 5aca4d3 — Task 2
 - 0436e11 — Task 3
+- 3b37f3a — Worktree leak fix (Rule 1 deviation)
 
-Test count: 402 (365 baseline + 37 new) — all pass.
+Test count: 403 (365 baseline + 38 new) — all pass.
 TypeScript: clean (tsc --noEmit exits 0).
 WR-01 grep: no matches in action.yml + src/ (verified locally).

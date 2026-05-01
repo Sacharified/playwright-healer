@@ -55,7 +55,8 @@
 - [x] **DET-04**: In `log-only` dispatch mode (default for v0 rollout), detections are written to the action's step summary but no dispatch fires — lets consumers validate thresholds before enabling healing
 - [ ] **DET-05**: In live dispatch mode, when a test crosses threshold, the action fires `workflow_dispatch` on a configurable healer-workflow file (default `.github/workflows/playwright-healer.yml`) with a self-contained JSON payload: commit SHA, test file, test title, fix-class hint, recent run stats
 - [ ] **DET-06**: Dispatch uses the `healer-token` PAT (not `GITHUB_TOKEN`) so the eventual healer PR's CI will actually run
-- [ ] **DET-07**: A concurrency group keyed on test file + test title prevents two simultaneous dispatches for the same test
+- [x] **DET-07
+**: A concurrency group keyed on test file + test title prevents two simultaneous dispatches for the same test
 
 ### Security & Loop Prevention (SEC)
 
