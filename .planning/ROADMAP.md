@@ -149,7 +149,7 @@ Plans:
   4. Triggering the healer a second time for a test that already has an open healer PR or issue results in a comment added to the existing item, not a duplicate PR or issue created
 **Plans**: 5 plans
 - [x] 04-01-PLAN.md — Type widening + ingest dispatch wiring (DET-05, DET-06, DET-07 key-build half) — Wave 1
-- [ ] 04-02-PLAN.md — FIX-07 type cascade + classifier + 4 new prompt templates (FIX-07) — Wave 2 (depends on 01)
+- [x] 04-02-PLAN.md — FIX-07 type cascade + classifier + 4 new prompt templates (FIX-07) — Wave 2 (depends on 01)
 - [ ] 04-03-PLAN.md — PRI-04 dedup queries (PRI-04) — Wave 3 (depends on 02 — pr-writer.ts cascade)
 - [ ] 04-04-PLAN.md — Heal-cap (D-04) + healer-side SEC-05 Guard 3 + heal-event NDJSON + WR-02/WR-03 fixes + WR-01 verify (DET-07) — Wave 4 (depends on 01, 02, 03)
 - [ ] 04-05-PLAN.md — E2E verification: concurrency block + assertion fixture + full-gates re-run + manual UAT (DET-07, FIX-07) — Wave 5 (depends on 01, 02, 03, 04)
