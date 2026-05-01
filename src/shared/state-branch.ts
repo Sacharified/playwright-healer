@@ -17,7 +17,7 @@ import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { NdjsonRecord } from './types.js';
+import type { NdjsonRecord, HealEvent } from './types.js';
 
 const STATE_BRANCH = 'playwright-healer-state';
 const BOT_EMAIL = 'playwright-healer-bot@users.noreply.github.com';
@@ -35,6 +35,114 @@ export function todayPath(): string {
   const m = String(now.getUTCMonth() + 1).padStart(2, '0');
   const d = String(now.getUTCDate()).padStart(2, '0');
   return `runs/${y}/${m}/${d}.ndjson`;
+}
+
+/**
+ * Heal-event NDJSON path for today (Phase 04, Pitfall 7).
+ * Sibling of todayPath() — runs/YYYY/MM/DD-heals.ndjson.
+ */
+export function todayHealPath(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  return `runs/${y}/${m}/${d}-heals.ndjson`;
+}
+
+/**
+ * Append a single HealEvent to today's runs/YYYY/MM/DD-heals.ndjson on the
+ * state branch. SAME retry-loop and durability invariants as appendRecord:
+ *   - Pitfall A: every git call uses { cwd: worktreePath }
+ *   - Pitfall B: atomic write via .tmp rename
+ *   - Pitfall C: --force-with-lease=playwright-healer-state (ref-qualified)
+ *   - Sentinel: [skip-healer] in every commit message (Guard 2 prerequisite)
+ *   - Exhaustion: core.warning, no throw (Assumption A1)
+ *
+ * DO NOT abstract a shared helper with appendRecord — duplicating preserves
+ * the existing test surface for appendRecord while keeping the heal path
+ * independently auditable.
+ */
+export async function appendHealEvent(
+  event: HealEvent,
+  worktreePath: string,
+): Promise<void> {
+  const ndjsonPath = todayHealPath();
+  const absPath = path.join(worktreePath, ndjsonPath);
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // 1. Sync to remote state before every attempt
+    await getExecOutput(
+      'git',
+      ['fetch', 'origin', STATE_BRANCH],
+      { cwd: worktreePath },
+    );
+    await getExecOutput(
+      'git',
+      ['reset', '--hard', `origin/${STATE_BRANCH}`],
+      { cwd: worktreePath },
+    );
+
+    // 2. Ensure NDJSON directory exists
+    fs.mkdirSync(path.join(worktreePath, path.dirname(ndjsonPath)), { recursive: true });
+
+    // 3. Atomic append (temp rename prevents partial-write corruption — Pitfall B)
+    const existing = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : '';
+    const appended = existing + JSON.stringify(event) + '\n';
+    const tmpPath = `${absPath}.tmp`;
+    fs.writeFileSync(tmpPath, appended, 'utf8');
+    fs.renameSync(tmpPath, absPath);
+
+    // 4. Stage and commit in the worktree (never in process.cwd())
+    await getExecOutput(
+      'git',
+      ['add', ndjsonPath],
+      { cwd: worktreePath },
+    );
+    await getExecOutput(
+      'git',
+      [
+        '-c', `user.email=${BOT_EMAIL}`,
+        '-c', `user.name=${BOT_NAME}`,
+        'commit', '-m', `heal: ${event.testId} ${event.outcome} [skip-healer]`,
+      ],
+      { cwd: worktreePath },
+    );
+
+    // 5. Push with ref-qualified lease (Pitfall C: prevents stale FETCH_HEAD false-positive)
+    //    Form: --force-with-lease=playwright-healer-state (NOT bare --force-with-lease)
+    const push = await getExecOutput(
+      'git',
+      [
+        'push',
+        `--force-with-lease=${STATE_BRANCH}`,
+        'origin',
+        STATE_BRANCH,
+      ],
+      { cwd: worktreePath, ignoreReturnCode: true },
+    );
+
+    if (push.exitCode === 0) return;
+
+    // Push rejected — another concurrent writer pushed first
+    // Exponential backoff + jitter before retry
+    const delayMs = 100 * Math.pow(2, attempt) + Math.floor(Math.random() * 100);
+    core.warning(
+      `State branch heal-event push rejected (attempt ${attempt + 1}/${MAX_RETRIES}). Retry in ${delayMs}ms.`,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+    // Undo local commit before retry (fetch + reset at top of loop will re-sync anyway)
+    await getExecOutput(
+      'git',
+      ['reset', '--soft', 'HEAD~1'],
+      { cwd: worktreePath },
+    );
+  }
+
+  // All retry attempts exhausted — non-fatal (analytics gap, not a security issue)
+  core.warning(
+    `State branch: all ${MAX_RETRIES} heal-event push attempts rejected. Heal record for ${event.testId} not persisted.`,
+  );
 }
 
 /**

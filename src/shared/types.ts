@@ -36,3 +36,20 @@ export interface Detection {
   threshold: number;
   runCount: number;
 }
+
+// HealEvent (Phase 04 — Pitfall 7): per-test heal record on the state branch.
+// Schema: runs/YYYY/MM/DD-heals.ndjson — sibling of runs/YYYY/MM/DD.ndjson (NdjsonRecord).
+// Append-only; same --force-with-lease=playwright-healer-state retry loop.
+// Written from THREE sites (state must agree across all):
+//   1. src/healer/index.ts Step 11 after openHealerPr returns → outcome 'pr-opened'
+//   2. src/healer/index.ts fileIssue helper after openIssue returns → outcome 'issue-opened'
+//   3. src/ingest/dispatch.ts cap-hit branch BEFORE skipping dispatch → outcome 'cap-reached'
+export interface HealEvent {
+  schemaVersion: 1;
+  timestamp: string;     // ISO 8601 UTC
+  testId: string;        // "{filePath}::{title}" — same key as NdjsonTestEntry.testId
+  outcome: 'pr-opened' | 'issue-opened' | 'cap-reached';
+  dispatchRunId: string; // GITHUB_RUN_ID at write time
+  prUrl?: string;
+  issueUrl?: string;
+}
