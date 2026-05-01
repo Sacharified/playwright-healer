@@ -558,6 +558,18 @@ describe('run() — Phase 04 Guard 3 (SEC-05 per-test heal cap backstop)', () =>
     expect(mockRemoveWorktree).toHaveBeenCalledWith('/tmp/healer-state-worktree');
   });
 
+  it('Test 3c: Guard 3 cap-hit → removeWorktree called (no worktree leak on early return)', async () => {
+    // Regression guard for the worktree-leak bug: when cap-hit fires a `return` inside
+    // the outer try, the outer finally MUST still run and clean up the worktree.
+    mockShouldSkipHeal.mockReturnValue({ skip: true, count: 3 });
+    await run(baseConfig);
+
+    // removeWorktree must be called with the worktree path, even though we returned early
+    expect(mockRemoveWorktree).toHaveBeenCalledWith('/tmp/healer-state-worktree');
+    // Confirm it was a cap-hit path (not a normal PR path)
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
   it('Guard 3 bootstrap failure → warning emitted, flow continues (non-fatal)', async () => {
     mockBootstrapOrGetWorktree.mockRejectedValue(new Error('git remote not reachable'));
     mockValidate

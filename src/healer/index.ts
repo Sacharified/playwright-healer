@@ -154,44 +154,45 @@ export async function run(config: Config): Promise<void> {
     `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/` +
     `${process.env.GITHUB_REPOSITORY ?? ''}.git`;
   let stateWorktreePath: string | null = null;
-  try {
-    stateWorktreePath = await bootstrapOrGetWorktree(remoteUrl, cwd);
-    const testId = `${payload.testFile}::${payload.testTitle}`;
-    const guard3 = shouldSkipHeal(testId, config, stateWorktreePath);
-    if (guard3.skip) {
-      await fileIssue({
-        config, owner, repo,
-        testFile: payload.testFile,
-        testTitle: payload.testTitle,
-        stateWorktreePath,
-        triggeringRunUrl,
-        failureMode: 'cap-exceeded',
-        rootCause: `SEC-05 Guard 3: per-test heal cap reached (${guard3.count} >= ${config.maxHealsPerTestPerWeek}). Manual review required.`,
-        reproSteps: 'Inspect prior heal artifacts for this test in the state branch heal log (runs/YYYY/MM/DD-heals.ndjson).',
-        suggestedManualFix: 'A human must approve the next heal attempt by clearing the prior heal events on the state branch OR raising max_heals_per_test_per_week in workflow inputs.',
-      });
-      await appendHealEvent(
-        {
-          schemaVersion: 1,
-          timestamp: new Date().toISOString(),
-          testId,
-          outcome: 'cap-reached',
-          dispatchRunId: process.env.GITHUB_RUN_ID ?? 'local',
-        },
-        stateWorktreePath,
-      );
-      return;
-    }
-  } catch (err) {
-    // Bootstrap failure is non-fatal — the cap is a defense-in-depth backstop.
-    // The ingest-side D-04 pre-check is the cheap layer; if both layers fail,
-    // a cap-bypass on a single heal is acceptable (vs. blocking all heals).
-    core.warning(
-      `Phase 04 Guard 3: state-branch bootstrap failed (${String(err)}). Proceeding without backstop cap check.`,
-    );
-  }
 
   try {
+    // Inner try/catch: bootstrap failure is non-fatal. If bootstrap fails,
+    // stateWorktreePath stays null and the pipeline continues without the
+    // Guard 3 backstop (D-04 ingest pre-check is the cheap layer).
+    try {
+      stateWorktreePath = await bootstrapOrGetWorktree(remoteUrl, cwd);
+      const testId = `${payload.testFile}::${payload.testTitle}`;
+      const guard3 = shouldSkipHeal(testId, config, stateWorktreePath);
+      if (guard3.skip) {
+        await fileIssue({
+          config, owner, repo,
+          testFile: payload.testFile,
+          testTitle: payload.testTitle,
+          stateWorktreePath,
+          triggeringRunUrl,
+          failureMode: 'cap-exceeded',
+          rootCause: `SEC-05 Guard 3: per-test heal cap reached (${guard3.count} >= ${config.maxHealsPerTestPerWeek}). Manual review required.`,
+          reproSteps: 'Inspect prior heal artifacts for this test in the state branch heal log (runs/YYYY/MM/DD-heals.ndjson).',
+          suggestedManualFix: 'A human must approve the next heal attempt by clearing the prior heal events on the state branch OR raising max_heals_per_test_per_week in workflow inputs.',
+        });
+        await appendHealEvent(
+          {
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            testId,
+            outcome: 'cap-reached',
+            dispatchRunId: process.env.GITHUB_RUN_ID ?? 'local',
+          },
+          stateWorktreePath,
+        );
+        return;  // outer finally WILL run — stateWorktreePath cleanup is guaranteed
+      }
+    } catch (err) {
+      core.warning(
+        `Phase 04 Guard 3: state-branch bootstrap failed (${String(err)}). Proceeding without backstop cap check.`,
+      );
+    }
+
     // ── Step 2: Select provider adapter (D-01 / D-02) ────────────────────
     const adapter = selectAdapter(config);
 
