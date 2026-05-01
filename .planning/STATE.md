@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-03-PLAN.md — PRI-04 dedup queries (PR + issue)
-last_updated: "2026-05-01T23:45:00.000Z"
-last_activity: 2026-04-29
+stopped_at: Completed 04-04-PLAN.md — heal-cap DET-07 + WR-01/02/03 backlog
+last_updated: "2026-05-01T01:05:00.000Z"
+last_activity: 2026-05-01
 progress:
   total_phases: 10
   completed_phases: 6
   total_plans: 38
-  completed_plans: 37
-  percent: 97
+  completed_plans: 40
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 ## Current Position
 
 Phase: 4
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-04-29
+Plan: 4 of 5
+Status: In progress
+Last activity: 2026-05-01
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100%
 | Phase 01.2 P01 | 3min | 3 tasks | 2 files |
 | Phase 01.3 P01 | 15min | 4 tasks | 5 files |
 | Phase 04-auto-dispatch-full-fix-classes-deduplication P02 | 8 | 3 tasks | 17 files |
+| Phase 04-auto-dispatch-full-fix-classes-deduplication P04 | ~35m | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,11 @@ Recent decisions affecting current work:
 - FIX-07 cascade order: adapter.ts FIRST, parseFinalText adapters follow — TypeScript enforces this at compile time
 - classifyFixClass uses static module-scope regex literals only — input never reaches RegExp constructor (T-04-04 mitigation)
 - CFG-04 disable emits core.warning (not silent skip) — surfaces operator-actionable signal in step summary
+- Phase 04 Plan 04: IssueOpts widened to include testFile + stateWorktreePath — enables full testFile::testTitle cap key for issue-opened heal events, matching pr-opened path (no cap undercount)
+- Phase 04 Plan 04: appendHealEvent NOT abstracted from appendRecord — deliberate duplication for independent auditability per Pitfall 7 guidance
+- Phase 04 Plan 04: countHealsForTest uses synchronous fs I/O — walks ≤ flakeWindowDays files (<1KB each); async complexity not justified
+- Phase 04 Plan 04: Guard 3 bootstrap failure non-fatal — blocking all heals on state-branch error worse than single cap-bypass
+- Phase 04 Plan 04: security-lint Check 5 excludes itself via --exclude=security-lint.yml to avoid self-referential false positive from grep command string
 
 ### Pending Todos
 
@@ -135,8 +141,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T23:45:00.000Z
-Stopped at: Completed 04-03-PLAN.md — PRI-04 dedup queries (PR + issue)
+Last session: 2026-05-01T01:05:00.000Z
+Stopped at: Completed 04-04-PLAN.md — heal-cap DET-07 + WR-01/02/03 backlog
 Resume file: None
 
 **Planned Phase:** 04 (auto-dispatch-full-fix-classes-deduplication) — 5 plans — 2026-05-01T18:12:08.757Z
