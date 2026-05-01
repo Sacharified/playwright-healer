@@ -36,6 +36,7 @@ import {
 import type { NdjsonRecord, NdjsonTestEntry } from '../shared/types.js';
 import { evaluateThresholds } from './threshold-evaluator.js';
 import { writeDetectionSummary } from './summary-writer.js';
+import { fireDispatch, buildConcurrencyKey } from './dispatch.js';
 
 // Read package.json version for healerVersion (composite action — no bundling)
 const require = createRequire(import.meta.url);
@@ -135,8 +136,37 @@ export async function run(config: Config): Promise<void> {
     const windowRecords = readWindowRecords(worktreePath, config.flakeWindowDays);
     const detections = evaluateThresholds(windowRecords, config);
 
-    // ── Step 8: STEP SUMMARY (DET-04 log-only) ───────────────────────────
-    await writeDetectionSummary(detections);
+    // ── Step 8: STEP SUMMARY (DET-04) ───────────────────────────────────
+    // Pass enableAutoDispatch so summary-writer surfaces live vs log-only mode.
+    await writeDetectionSummary(detections, config.enableAutoDispatch);
+
+    // ── Step 9: AUTO-DISPATCH (DET-05/06/07, Phase 04) ──────────────────
+    // CONTEXT D-01: opt-in via enable_auto_dispatch (default 'false').
+    // Heal-cap pre-gate (D-04) is added in Plan 04. Classifier hint
+    // (FIX-07) is added in Plan 02 — Plan 01 placeholder is 'selectors'.
+    if (config.enableAutoDispatch && detections.length > 0) {
+      for (const detection of detections) {
+        const [testFile, testTitle] = detection.testId.split('::', 2);
+        await fireDispatch({
+          patToken:       config.healerToken,
+          owner:          github.context.repo.owner,
+          repo:           github.context.repo.repo,
+          // RESEARCH §"Open Questions §2 RESOLVED": configurable via healer_workflow_file
+          // action input (default 'playwright-healer.yml'). Multi-workflow consumers override.
+          workflowFile:   config.healerWorkflowFile,
+          // Pitfall 2: ref MUST be the default branch (where the heal workflow file lives),
+          // NOT GITHUB_REF_NAME (which could be a feature branch without the workflow).
+          ref:            (github.context.payload.repository as { default_branch?: string } | undefined)?.default_branch ?? 'main',
+          detection,
+          commitSha:      github.context.sha,
+          fixClassHint:   'selectors', // Plan 02 replaces with classifyFixClass(...)
+          flakeRate:      detection.reason === 'flake-rate' ? detection.value : 0,
+          windowDays:     detection.windowDays,
+          runCount:       detection.runCount,
+          concurrencyKey: buildConcurrencyKey(testFile, testTitle),
+        });
+      }
+    }
   } finally {
     if (worktreePath) {
       await removeWorktree(worktreePath).catch((e: unknown) =>
