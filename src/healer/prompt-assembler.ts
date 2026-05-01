@@ -18,7 +18,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = path.join(__dirname, 'prompts');
 
 export interface AssemblePromptArgs {
-  fixClassHint: 'selectors' | 'waits';
+  // Phase 04 widen: accepts all four v1 fix classes (FIX-07 cascade from adapter.ts).
+  // File-routing pattern is unchanged — ${fixClassHint}-${traceTag}.md still works;
+  // new prompt files (assertions-*.md, slow-*.md) are added in Plan 02.
+  fixClassHint: 'selectors' | 'waits' | 'assertions' | 'slow';
   traceAttachmentPath: string | null;
   testTitle: string;
   testFile: string;

@@ -108,6 +108,16 @@ export function getInputSchema() {
     skipDeterministicCheck: z.string().default('false').transform(v => v === 'true'),
     skipPostFixValidation:  z.string().default('false').transform(v => v === 'true'),
     skipDiffLint:           z.string().default('false').transform(v => v === 'true'),
+
+    // ── Phase 04: Auto-dispatch opt-in (CONTEXT D-01: default OFF, safe-default per MRG-01) ──
+    // Same z.string() transform pattern as the demo-mode skip flags above (default 'false').
+    // DO NOT use .default('true').transform(v => v !== 'false') — that is the CFG-04 pattern
+    // (default ON). D-01 locks enable_auto_dispatch to default-OFF.
+    enableAutoDispatch: z.string().default('false').transform(v => v === 'true'),
+    // ── Phase 04: Workflow file name for dispatch (RESEARCH §"Open Questions §2 RESOLVED") ──
+    // Configurable so multi-workflow consumers (per-environment heal workflows) can override.
+    // Default matches REQUIREMENTS DET-05 phrasing.
+    healerWorkflowFile: z.string().min(1).default('playwright-healer.yml'),
   }).superRefine((v, ctx) => {
     if (v.provider !== 'ollama' && v.apiKey.length === 0) {
       ctx.addIssue({

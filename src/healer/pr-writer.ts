@@ -19,7 +19,8 @@ export interface OpenHealerPrArgs {
   defaultBranch: string;
   branch: string;
   rootCause: string;
-  fixClass: 'selectors' | 'waits';
+  // Phase 04 widen: all four v1 fix classes (FIX-07 cascade from adapter.ts).
+  fixClass: 'selectors' | 'waits' | 'assertions' | 'slow';
   rationale: string;
   validation: ValidationResult;
   costUsd: number;
