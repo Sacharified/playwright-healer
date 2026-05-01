@@ -14,6 +14,10 @@ const {
   mockRunAgent,
   mockCreateGeminiAdapter,
   mockCreateGithubAdapter,
+  mockBootstrapOrGetWorktree,
+  mockRemoveWorktree,
+  mockAppendHealEvent,
+  mockShouldSkipHeal,
 } = vi.hoisted(() => {
   const mockRunAgent = vi.fn();
   const mockCreateGeminiAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
@@ -30,6 +34,10 @@ const {
     mockRunAgent,
     mockCreateGeminiAdapter,
     mockCreateGithubAdapter,
+    mockBootstrapOrGetWorktree: vi.fn(),
+    mockRemoveWorktree: vi.fn(),
+    mockAppendHealEvent: vi.fn(),
+    mockShouldSkipHeal: vi.fn(),
   };
 });
 
@@ -54,6 +62,16 @@ vi.mock('./adapters/anthropic.js', () => ({
 }));
 vi.mock('./adapters/ollama.js', () => ({
   ollamaAdapter: { runAgent: vi.fn().mockRejectedValue(new Error('ollama adapter not implemented in Phase 3')) },
+}));
+
+// Phase 04: state-branch + loop-guard mocks (Guard 3 backstop + heal-event writes)
+vi.mock('../shared/state-branch.js', () => ({
+  bootstrapOrGetWorktree: mockBootstrapOrGetWorktree,
+  removeWorktree: mockRemoveWorktree,
+  appendHealEvent: mockAppendHealEvent,
+}));
+vi.mock('../shared/loop-guard.js', () => ({
+  shouldSkipHeal: mockShouldSkipHeal,
 }));
 
 let mockSetFailed = vi.fn();
@@ -132,6 +150,11 @@ beforeEach(() => {
   // Re-apply mockReturnValue since clearAllMocks clears implementations
   mockCreateGeminiAdapter.mockReturnValue({ runAgent: mockRunAgent });
   mockCreateGithubAdapter.mockReturnValue({ runAgent: mockRunAgent });
+  // Phase 04: state-branch + loop-guard defaults (Guard 3 below-cap by default)
+  mockBootstrapOrGetWorktree.mockResolvedValue('/tmp/healer-state-worktree');
+  mockRemoveWorktree.mockResolvedValue(undefined);
+  mockAppendHealEvent.mockResolvedValue(undefined);
+  mockShouldSkipHeal.mockReturnValue({ skip: false, count: 0 });
 });
 
 describe('run() — D-09 routing tree', () => {
@@ -479,5 +502,136 @@ describe('run() — FIX-07 LLM override observability (RESEARCH §FIX-07 Archite
       (args: unknown[]) => typeof args[0] === 'string' && args[0].includes('Agent overrode fixClassHint'),
     );
     expect(overrideCallMade).toBe(false);
+  });
+});
+
+// ── Phase 04: SEC-05 Guard 3 backstop tests ───────────────────────────────────
+
+describe('run() — Phase 04 Guard 3 (SEC-05 per-test heal cap backstop)', () => {
+  it('Test 3: Guard 3 cap-hit → files cap-exceeded issue, agent NOT called', async () => {
+    // Guard 3 returns skip=true (heal cap reached)
+    mockShouldSkipHeal.mockReturnValue({ skip: true, count: 3 });
+    await run(baseConfig);
+
+    // Issue filed with cap-exceeded failureMode
+    expect(mockOpenIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ failureMode: 'cap-exceeded' }),
+    );
+    // Agent loop must NOT run
+    expect(mockRunAgent).not.toHaveBeenCalled();
+    // PR must NOT be opened
+    expect(mockOpenPr).not.toHaveBeenCalled();
+  });
+
+  it('Test 3b: Guard 3 cap-hit → appendHealEvent called with outcome cap-reached', async () => {
+    mockShouldSkipHeal.mockReturnValue({ skip: true, count: 3 });
+    await run(baseConfig);
+
+    expect(mockAppendHealEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'cap-reached' }),
+      '/tmp/healer-state-worktree',
+    );
+  });
+
+  it('Test 4: Guard 3 below cap → normal flow continues to adapter', async () => {
+    // Guard 3 returns skip=false (below cap)
+    mockShouldSkipHeal.mockReturnValue({ skip: false, count: 2 });
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run(baseConfig);
+
+    // Adapter was called (normal flow)
+    expect(mockRunAgent).toHaveBeenCalled();
+    expect(mockOpenPr).toHaveBeenCalled();
+  });
+
+  it('Test 8: stateWorktreePath is cleaned up in finally (removeWorktree called)', async () => {
+    mockShouldSkipHeal.mockReturnValue({ skip: false, count: 0 });
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run(baseConfig);
+
+    expect(mockRemoveWorktree).toHaveBeenCalledWith('/tmp/healer-state-worktree');
+  });
+
+  it('Guard 3 bootstrap failure → warning emitted, flow continues (non-fatal)', async () => {
+    mockBootstrapOrGetWorktree.mockRejectedValue(new Error('git remote not reachable'));
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    await run(baseConfig);
+
+    // Warning about bootstrap failure
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining('Guard 3'),
+    );
+    // Flow continues — adapter still called
+    expect(mockRunAgent).toHaveBeenCalled();
+  });
+});
+
+// ── Phase 04: Heal-event write sites ─────────────────────────────────────────
+
+describe('run() — Phase 04 heal-event write sites', () => {
+  it('Test 5: PR success → appendHealEvent called with outcome pr-opened + prUrl', async () => {
+    mockShouldSkipHeal.mockReturnValue({ skip: false, count: 0 });
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    mockOpenPr.mockResolvedValue('https://github.com/acme/repo/pull/42');
+    await run(baseConfig);
+
+    expect(mockAppendHealEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: 'pr-opened',
+        prUrl: 'https://github.com/acme/repo/pull/42',
+        testId: `${validPayload.testFile}::${validPayload.testTitle}`,
+      }),
+      '/tmp/healer-state-worktree',
+    );
+  });
+
+  it('Test 6: issue success → appendHealEvent called with outcome issue-opened + issueUrl', async () => {
+    mockShouldSkipHeal.mockReturnValue({ skip: false, count: 0 });
+    // Sanity rerun returns 0 passRate — deterministic failure → fileIssue called
+    mockValidate.mockResolvedValueOnce({ passed: 0, total: 10, passRate: 0, perRun: [] });
+    mockOpenIssue.mockResolvedValue('https://github.com/acme/repo/issues/5');
+    await run(baseConfig);
+
+    expect(mockOpenIssue).toHaveBeenCalled();
+    expect(mockAppendHealEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: 'issue-opened',
+        issueUrl: 'https://github.com/acme/repo/issues/5',
+      }),
+      '/tmp/healer-state-worktree',
+    );
+  });
+
+  it('Test 7: appendHealEvent failure after PR open is non-fatal (PR URL returned)', async () => {
+    mockShouldSkipHeal.mockReturnValue({ skip: false, count: 0 });
+    mockValidate
+      .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+      .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+    mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+    mockOpenPr.mockResolvedValue('https://github.com/acme/repo/pull/99');
+    // appendHealEvent throws — must be non-fatal
+    mockAppendHealEvent.mockRejectedValue(new Error('state branch unreachable'));
+    await run(baseConfig);
+
+    // PR was still opened (the healer did its job)
+    expect(mockOpenPr).toHaveBeenCalled();
+    // Warning was emitted about the analytics-only loss
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining('heal-event write failed'),
+    );
+    // No setFailed (non-fatal)
+    expect(mockSetFailed).not.toHaveBeenCalled();
   });
 });

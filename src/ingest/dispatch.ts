@@ -15,6 +15,7 @@ import { Octokit } from '@octokit/rest';
 import * as core from '@actions/core';
 import { createHash } from 'node:crypto';
 import type { Detection } from '../shared/types.js';
+import { appendHealEvent } from '../shared/state-branch.js';
 
 // Pitfall 1: GitHub caps each workflow_dispatch input at 1024 chars; safety margin.
 const MAX_INPUT_LEN = 1000;
@@ -125,4 +126,31 @@ function slug(s: string, maxLen: number): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, maxLen);
+}
+
+/**
+ * Phase 04 D-04 cap-hit branch: writes a 'cap-reached' HealEvent (sticky cap)
+ * and emits a ::warning:: annotation. Called from src/ingest/index.ts Step 9
+ * BEFORE fireDispatch, when countHealsForTest returns at-or-above the cap.
+ */
+export async function recordCapHit(args: {
+  testId: string;
+  count: number;
+  cap: number;
+  worktreePath: string;
+}): Promise<void> {
+  core.warning(
+    `playwright-healer: heal cap reached for "${args.testId}" ` +
+    `(${args.count} >= ${args.cap}) — manual review required`,
+  );
+  await appendHealEvent(
+    {
+      schemaVersion: 1,
+      timestamp: new Date().toISOString(),
+      testId: args.testId,
+      outcome: 'cap-reached',
+      dispatchRunId: process.env.GITHUB_RUN_ID ?? 'local',
+    },
+    args.worktreePath,
+  );
 }

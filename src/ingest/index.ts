@@ -24,7 +24,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
 
-import { shouldSkipIngest } from '../shared/loop-guard.js';
+import { shouldSkipIngest, countHealsForTest } from '../shared/loop-guard.js';
 import { type Config } from '../shared/config.js';
 import { parseReport } from './report-parser.js';
 import {
@@ -36,7 +36,7 @@ import {
 import type { NdjsonRecord, NdjsonTestEntry } from '../shared/types.js';
 import { evaluateThresholds } from './threshold-evaluator.js';
 import { writeDetectionSummary } from './summary-writer.js';
-import { fireDispatch, buildConcurrencyKey } from './dispatch.js';
+import { fireDispatch, buildConcurrencyKey, recordCapHit } from './dispatch.js';
 import { classifyFixClass } from './classifier.js';
 
 // Read package.json version for healerVersion (composite action — no bundling)
@@ -160,6 +160,21 @@ export async function run(config: Config): Promise<void> {
         const [testFile, testTitle] = detection.testId.split('::', 2);
         const latestEntry = latestEntryByTestId.get(detection.testId);
         const fixClassHint = classifyFixClass(latestEntry?.errorSignature ?? '');
+
+        // D-04 (Phase 04): cheap pre-dispatch heal-cap query — saves a workflow run on
+        // the cap-already-hit path. Healer-side Guard 3 (Step 1.5) is the backstop.
+        if (worktreePath) {
+          const healCount = countHealsForTest(detection.testId, config.flakeWindowDays, worktreePath);
+          if (healCount >= config.maxHealsPerTestPerWeek) {
+            await recordCapHit({
+              testId: detection.testId,
+              count: healCount,
+              cap: config.maxHealsPerTestPerWeek,
+              worktreePath,
+            });
+            continue;
+          }
+        }
 
         // CFG-04: per-class disable — operator can suppress a class with a warning,
         // not a silent skip, so the action log surfaces the operator-actionable signal.

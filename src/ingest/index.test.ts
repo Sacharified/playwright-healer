@@ -22,6 +22,9 @@ const {
   mockParseReport,
   mockGlobberGlob,
   mockClassifyFixClass,
+  mockCountHealsForTest,
+  mockRecordCapHit,
+  mockAppendHealEvent,
 } = vi.hoisted(() => ({
   mockBootstrapOrGetWorktree: vi.fn(),
   mockAppendRecord: vi.fn(),
@@ -36,12 +39,19 @@ const {
   mockParseReport: vi.fn(),
   mockGlobberGlob: vi.fn(),
   mockClassifyFixClass: vi.fn(),
+  mockCountHealsForTest: vi.fn(),
+  mockRecordCapHit: vi.fn(),
+  mockAppendHealEvent: vi.fn(),
 }));
 
-vi.mock('../shared/loop-guard.js', () => ({ shouldSkipIngest: mockShouldSkipIngest }));
+vi.mock('../shared/loop-guard.js', () => ({
+  shouldSkipIngest: mockShouldSkipIngest,
+  countHealsForTest: mockCountHealsForTest,
+}));
 vi.mock('../shared/state-branch.js', () => ({
   bootstrapOrGetWorktree: mockBootstrapOrGetWorktree,
   appendRecord: mockAppendRecord,
+  appendHealEvent: mockAppendHealEvent,
   runGc: mockRunGc,
   removeWorktree: mockRemoveWorktree,
 }));
@@ -51,6 +61,7 @@ vi.mock('./summary-writer.js', () => ({ writeDetectionSummary: mockWriteDetectio
 vi.mock('./dispatch.js', () => ({
   fireDispatch: mockFireDispatch,
   buildConcurrencyKey: mockBuildConcurrencyKey,
+  recordCapHit: mockRecordCapHit,
 }));
 
 vi.mock('./classifier.js', () => ({
@@ -162,6 +173,10 @@ beforeEach(() => {
   mockBuildConcurrencyKey.mockReturnValue('test-concurrency-key');
   mockRemoveWorktree.mockResolvedValue(undefined);
   mockClassifyFixClass.mockReturnValue('selectors');
+  // D-04: by default heal count is 0 (below cap) — dispatch proceeds
+  mockCountHealsForTest.mockReturnValue(0);
+  mockRecordCapHit.mockResolvedValue(undefined);
+  mockAppendHealEvent.mockResolvedValue(undefined);
 });
 
 // ── Task 3 Test 1: enableAutoDispatch=false suppresses fireDispatch ──────────
@@ -282,5 +297,48 @@ describe('Step 9 auto-dispatch — classifier integration (Test 11)', () => {
     expect(mockFireDispatch).toHaveBeenCalledTimes(1);
     const callArgs = mockFireDispatch.mock.calls[0][0];
     expect(callArgs.fixClassHint).toBe('slow');
+  });
+});
+
+// ── Phase 04 D-04 heal-cap gate tests ────────────────────────────────────────
+
+describe('Step 9 auto-dispatch — D-04 heal-cap gate (Test 12: cap-hit suppresses dispatch)', () => {
+  it('does NOT call fireDispatch when heal count >= maxHealsPerTestPerWeek', async () => {
+    // heal count at the cap
+    mockCountHealsForTest.mockReturnValue(3);
+    mockEvaluateThresholds.mockReturnValue([DETECTION]);
+    const config = makeConfig({ enableAutoDispatch: true, maxHealsPerTestPerWeek: 3 });
+    await run(config);
+
+    expect(mockFireDispatch).not.toHaveBeenCalled();
+  });
+
+  it('calls recordCapHit with correct args when cap is hit', async () => {
+    mockCountHealsForTest.mockReturnValue(3);
+    mockEvaluateThresholds.mockReturnValue([DETECTION]);
+    const config = makeConfig({ enableAutoDispatch: true, maxHealsPerTestPerWeek: 3 });
+    await run(config);
+
+    expect(mockRecordCapHit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        testId: DETECTION.testId,
+        count: 3,
+        cap: 3,
+        worktreePath: '/tmp/worktree-test',
+      }),
+    );
+  });
+});
+
+describe('Step 9 auto-dispatch — D-04 heal-cap gate (Test 13: below cap → dispatch fires)', () => {
+  it('calls fireDispatch when heal count < maxHealsPerTestPerWeek', async () => {
+    // count is below the cap
+    mockCountHealsForTest.mockReturnValue(2);
+    mockEvaluateThresholds.mockReturnValue([DETECTION]);
+    const config = makeConfig({ enableAutoDispatch: true, maxHealsPerTestPerWeek: 3 });
+    await run(config);
+
+    expect(mockFireDispatch).toHaveBeenCalledTimes(1);
+    expect(mockRecordCapHit).not.toHaveBeenCalled();
   });
 });
