@@ -147,7 +147,12 @@ Plans:
   2. Two simultaneous dispatch events for the same test (same test file + title key) produce only one queued healer run, not two parallel runs
   3. A fixture test whose root cause is a slow assertion (not a selector or timing issue) triggers an assertions fix or slow-test optimization fix from the agent rather than "no fix proposable"
   4. Triggering the healer a second time for a test that already has an open healer PR or issue results in a comment added to the existing item, not a duplicate PR or issue created
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 04-01-PLAN.md — Type widening + ingest dispatch wiring (DET-05, DET-06, DET-07 key-build half) — Wave 1
+- [ ] 04-02-PLAN.md — FIX-07 type cascade + classifier + 4 new prompt templates (FIX-07) — Wave 2 (depends on 01)
+- [ ] 04-03-PLAN.md — PRI-04 dedup queries (PRI-04) — Wave 3 (depends on 02 — pr-writer.ts cascade)
+- [ ] 04-04-PLAN.md — Heal-cap (D-04) + healer-side SEC-05 Guard 3 + heal-event NDJSON + WR-02/WR-03 fixes + WR-01 verify (DET-07) — Wave 4 (depends on 01, 02, 03)
+- [ ] 04-05-PLAN.md — E2E verification: concurrency block + assertion fixture + full-gates re-run + manual UAT (DET-07, FIX-07) — Wave 5 (depends on 01, 02, 03, 04)
 
 ### Phase 5: Auto-Merge
 **Goal**: Repos that opt in to auto-merge see eligible healer PRs (selectors fix class, 10/10 validation pass rate, CI green, test-directory-only diff) automatically merged via GitHub's merge queue without human action
@@ -185,6 +190,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
 | 3.1 First Heal — End-to-End Demo (INSERTED) | 3/3 | Complete | 2026-04-29 |
-| 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
+| 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/5 | Not started | - |
 | 5. Auto-Merge | 0/TBD | Not started | - |
 | 6. Documentation + Release | 0/TBD | Not started | - |
