@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-05-02T16:45:55.588Z"
+status: executing
+stopped_at: "Completed 05-01-PLAN.md: auto-merge config foundation"
+last_updated: "2026-05-02T18:08:31.260Z"
 last_activity: 2026-05-02
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 41
-  completed_plans: 40
-  percent: 98
+  completed_plans: 41
+  percent: 100
 ---
 
 # Project State
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 03.1 — first-heal-end-to-end-demo
+**Current focus:** Phase 05 — auto-merge
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Ready to plan
+Phase: 05 (auto-merge) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-05-02
 
 Progress: [██████████] 100%
@@ -68,6 +68,7 @@ Progress: [██████████] 100%
 | Phase 04-auto-dispatch-full-fix-classes-deduplication P04 | ~35m | 3 tasks | 15 files |
 | Phase 04 P04 | ~50m | 3 tasks | 17 files |
 | Phase 04-auto-dispatch-full-fix-classes-deduplication P05 | ~20m (automated tasks only; UAT pending) | 3 tasks | 3 files |
+| Phase 05-auto-merge P01 | 6m | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,9 @@ Recent decisions affecting current work:
 - concurrencyKey default sentinel in e2e-heal-self.yml: required:true with constant default 'manual-broken-selector-default' — satisfies DET-07 schema while keeping manual hand-dispatch workable
 - cancel-in-progress: false in concurrency block — queue not cancel (CONTEXT D-03: preserve both runs' detection evidence if they raced)
 - skip_post_fix_validation commented out not deleted — one-line revert path for demo rollback; Phase 04 re-engages validation gate
+- enableAutoMerge uses strict === 'true' transform (default-OFF per CONTEXT D-01 / MRG-01)
+- autoMergePassRate default 1.0 stricter than rerunPassRate 0.9 (CONTEXT D-01 / MRG-02)
+- autoMergeFixClasses stays string at schema layer; split-to-array deferred to Plan 02 gate call site
 
 ### Pending Todos
 
@@ -148,8 +152,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 5 context gathered
-Resume file: --resume-file
+Last session: 2026-05-02T18:08:31.257Z
+Stopped at: Completed 05-01-PLAN.md: auto-merge config foundation
+Resume file: None
 
 **Planned Phase:** 05 (auto-merge) — 3 plans — 2026-05-02T16:45:55.582Z

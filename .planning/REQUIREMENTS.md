@@ -112,8 +112,10 @@
 
 ### Auto-merge (MRG)
 
-- [ ] **MRG-01**: Auto-merge is opt-in via `enable-auto-merge: true` in action inputs or repo config (default false)
-- [ ] **MRG-02**: An auto-merge decision fires only when: validation pass rate ≥ `auto-merge-pass-rate` (default 1.0 = 10/10), fix class is in `auto-merge-fix-classes` allow-list (default `["selectors"]`), and the diff touches only paths inside the configured test directory
+- [x] **MRG-01
+**: Auto-merge is opt-in via `enable-auto-merge: true` in action inputs or repo config (default false)
+- [x] **MRG-02
+**: An auto-merge decision fires only when: validation pass rate ≥ `auto-merge-pass-rate` (default 1.0 = 10/10), fix class is in `auto-merge-fix-classes` allow-list (default `["selectors"]`), and the diff touches only paths inside the configured test directory
 - [ ] **MRG-03**: When conditions hold, the action calls `gh pr merge --auto --squash` (or Octokit equivalent) so GitHub merges the PR once CI passes; it never merges without CI having passed
 - [ ] **MRG-04**: Auto-merge decisions are logged to the run summary with the reasoning band (all conditions + "matched" / "blocked by X")
 
