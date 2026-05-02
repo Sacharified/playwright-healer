@@ -16,7 +16,7 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- [x] Support opt-in auto-merge for high-confidence fix classes when CI is green; otherwise request human review (Validated in Phase 5: auto-merge gate over four conditions — pass_rate, fix_class, scope, config_files — implemented in `src/healer/pr-writer.ts:evaluateAutoMerge`; opt-in via `enable_auto_merge: true`; reasoning band always rendered to `core.summary`. SC#2 live happy-path deferred to Phase 6 release verification due to fixture-tier constraint, accepted by Plan 03 Task 2.)
 
 ### Active
 
@@ -31,7 +31,6 @@ It's aimed at teams that already use Playwright in GitHub Actions and are tired 
 - [ ] Agent can propose fixes in four classes for v1: (a) selectors/locators, (b) waits/timing, (c) assertions, (d) slow-test optimizations
 - [ ] Validate proposed fixes by re-running the affected test N times; require configurable pass-rate threshold before opening a PR
 - [ ] Open a PR with the fix, the root-cause summary, validation evidence (pass count out of N), and a confidence band
-- [ ] Support opt-in auto-merge for high-confidence fix classes when CI is green; otherwise request human review
 - [ ] When no fix can be proposed, open a structured GitHub issue with root-cause analysis, reproduction notes, and debugging hints
 - [ ] Expose a minimum config surface via `action.yml` (commands, thresholds, fix-class toggles, auto-merge policy, Anthropic API key secret)
 - [ ] Ship with documentation and a working example workflow so a new consumer can adopt in one PR
@@ -123,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 — Phase 03.1 complete: first end-to-end heal demo landed. PR #1 on `Sacharified/playwright-healer-test` was opened by the action with a Gemini-2.5-Flash-generated selector fix (`getByRole('button', { name: 'Submit' })`); fixture-ci.yml on PR #1 conclusion `success`; total Gemini cost $0.0382 USD across 8 iterations. Six Phase-04 hardening items surfaced (clean:true subpath collision, free-tier model default, fix-applier `git add -A` scope leak, fix-applier no-force push, --3way fetch-depth warning, --force-with-lease stale-info on shallow clones) plus 3 code-review warnings (gitconfig PAT leak, sentinel passRate=1 misrender, unconditional validate() before skip flag check). Phase 03 (manual healer) and Phase 03.1 (first heal demo) both complete. Next: Phase 04 (auto-dispatch + full fix classes + dedup), with hardening backlog ready to be folded into its plan.*
+*Last updated: 2026-05-02 — Phase 5 (Auto-Merge) complete: opt-in auto-merge gate landed in `src/healer/pr-writer.ts` with four eligibility conditions (pass_rate, fix_class, scope, config_files) wrapped around an Octokit `enablePullRequestAutoMerge` GraphQL call; soft-fails on any error per D-05; reasoning band always rendered to `core.summary`. Live UAT (run 25260388518) confirmed SC#1 default-off zero-change behavior on `Sacharified/playwright-healer-test` PR #3. SC#2 happy-path live verification (live squash-merge through GitHub auto-merge) deferred to Phase 6 due to fixture-tier constraint: private + User-owned + GitHub Free tier cannot enable `allow_auto_merge` or branch protection (both required for the mutation to succeed). Plan 03 Task 2 explicitly accepts unit-level evidence (IN2/IN6 in `pr-writer.test.ts`) for SC#2 closure; live demo shifts to Phase 6 release prerequisites. 469 tests pass; tsc clean. Next: Phase 6 (Documentation + Release) — README polish, example consumer workflow, version tag, AND public/Pro-tier fixture configuration for live SC#2 + T-05-06 evidence at release time.*
