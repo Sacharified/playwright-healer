@@ -9,6 +9,66 @@ import { Octokit } from '@octokit/rest';
 import * as core from '@actions/core';
 import { SKIP_SENTINEL } from '../shared/loop-guard.js';
 import type { ValidationResult } from './validator.js';
+import { TEST_PATH_ALLOWLIST } from './forbidden-patterns.js';
+
+// ── Phase 05: auto-merge gate (CONTEXT D-04) ────────────────────────────────
+//
+// CONFIG_FILE_DENYLIST is the second, stricter overlay on top of TEST_PATH_ALLOWLIST.
+// CONTEXT D-03: lives next to the gate (NOT in forbidden-patterns.ts) — that file's
+// D-17 single-source-of-truth contract is for diff-lint+prompt-assembler shared
+// patterns; auto-merge is a third consumer with different semantics (a heal that
+// legitimately patches playwright.config.ts for a waits-class issue should still
+// open a PR for human review; only the auto-merge path is forbidden).
+//
+// Two regexes evaluated separately so the reasoning band can name the matched
+// pattern. Extension alternation is constrained to `(ts|js|mjs|cjs)` to prevent
+// false positives on unrelated dot-suffixed names (e.g., `playwright.config.foo`).
+const CONFIG_FILE_DENYLIST = Object.freeze([
+  /(?:^|\/)playwright\.config\.(?:ts|js|mjs|cjs)$/,
+  /(?:^|\/)[^/]+\.config\.(?:ts|js|mjs|cjs)$/,
+] as const);
+
+export interface AutoMergeCondition {
+  condition: 'pass_rate' | 'fix_class' | 'scope' | 'config_files';
+  result: 'matched' | 'blocked';
+  reason: string; // human-readable rationale for the reasoning band
+}
+
+export interface AutoMergeDecision {
+  eligible: boolean; // true iff every condition.result === 'matched'
+  conditions: readonly AutoMergeCondition[];
+}
+
+/**
+ * Parse the unified-diff `+++ b/<path>` lines and return the patched-file list.
+ * Excludes `/dev/null` (file deletion) and `+++ /dev/null` (literal).
+ *
+ * Used by `evaluateAutoMerge` (gate scope/config-file checks per D-02 / D-03)
+ * AND by `src/healer/index.ts:354` (to compute the `patchedFiles` arg threaded
+ * into `openHealerPr`). EXPORTED so index.ts imports rather than duplicating —
+ * single source of truth for the parser. Lives in pr-writer.ts since the gate
+ * is the primary consumer; index.ts is a one-line caller.
+ */
+export function extractPatchedFiles(diff: string): string[] {
+  const out: string[] = [];
+  for (const line of diff.split('\n')) {
+    // Match `+++ b/<path>` headers; tolerate trailing whitespace + arbitrary path chars.
+    const m = /^\+\+\+\s+b\/(\S.*?)\s*$/.exec(line);
+    if (!m) continue;
+    const path = m[1];
+    if (path === 'dev/null' || path === '/dev/null') continue;
+    out.push(path);
+  }
+  return out;
+}
+
+function isInTestPath(filePath: string): boolean {
+  return TEST_PATH_ALLOWLIST.some((re) => re.test(filePath));
+}
+
+function isConfigFile(filePath: string): boolean {
+  return CONFIG_FILE_DENYLIST.some((re) => re.test(filePath));
+}
 
 export interface OpenHealerPrArgs {
   patToken: string;
