@@ -60,11 +60,9 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # workflow-level concurrency must use github.event.inputs.* — the bare `inputs`
-  # context here is only populated for `workflow_call`, not `workflow_dispatch`.
-  group: playwright-healer-${{ github.repository }}-${{ github.event.inputs.concurrencyKey }}
-  cancel-in-progress: false
+# concurrency:  # bisect — temporarily disabled to find startup_failure cause
+#   group: playwright-healer-${{ github.repository }}-${{ github.event.inputs.concurrencyKey }}
+#   cancel-in-progress: false
 
 jobs:
   # ── Job 1: Red guard — the fixture test MUST fail without intervention ──
