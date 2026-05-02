@@ -29,10 +29,14 @@ result: pending
 expected: After 3+ heal events for the same test exist on the `playwright-healer-state` branch's `runs/YYYY/MM/DD-heals.ndjson`, a 4th dispatch for that test results in a `cap-exceeded` issue (no PR created).
 result: pending
 
+### E. PRI-04 dedup re-verification (post-HEALER_TOKEN fix)
+expected: A second dispatch for the same broken-selector test (after issue #11 already exists) commenting on the existing issue rather than creating a new one. No HTTP 422 errors on the dedup search path.
+result: PASS — run [25247935856](https://github.com/Sacharified/playwright-healer/actions/runs/25247935856). All 3 jobs green. Issue #11 received a 2nd comment (`## Re-trigger evidence (failureMode: validation-failed)`); open-issue count remained 10 (no duplicate created). Validates SC#4 empirically; HEALER_TOKEN env threading + git read-path auth fixes work as intended in production.
+
 ## Summary
 
-total: 4
-passed: 1
+total: 5
+passed: 2
 issues: 0
 pending: 3
 skipped: 0
