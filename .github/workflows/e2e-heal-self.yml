@@ -149,9 +149,13 @@ jobs:
         uses: ./
         with:
           mode: heal
-          provider: gemini
-          model: gemini-2.5-flash
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          # Phase 04 — switched from Gemini to GitHub Models (free tier; PAT-authed
+          # inference at https://models.github.ai/inference). HEALER_PAT is a fine-grained
+          # PAT with BOTH `models:read` (api_key path) and `repo` / `contents:write` +
+          # `pull-requests:write` + `issues:write` (healer_token path). Single secret.
+          provider: github
+          model: openai/gpt-4.1
+          api_key: ${{ secrets.HEALER_PAT }}
           healer_token: ${{ secrets.HEALER_PAT }}
           commit_sha: ${{ steps.resolve.outputs.sha }}
           base_url: http://localhost:8080
