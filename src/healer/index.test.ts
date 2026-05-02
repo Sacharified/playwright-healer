@@ -44,7 +44,7 @@ const {
 vi.mock('./context-bundler.js', () => ({ bundleContext: mockBundleContext }));
 vi.mock('./validator.js', () => ({ validate: mockValidate }));
 vi.mock('./fix-applier.js', () => ({ applyFix: mockApplyFix, DiffApplyFailure: class extends Error {} }));
-vi.mock('./pr-writer.js', () => ({ openHealerPr: mockOpenPr, renderPrBody: vi.fn() }));
+vi.mock('./pr-writer.js', () => ({ openHealerPr: mockOpenPr, renderPrBody: vi.fn(), extractPatchedFiles: vi.fn().mockReturnValue([]) }));
 vi.mock('./issue-writer.js', () => ({ openIssue: mockOpenIssue, renderIssueBody: vi.fn() }));
 vi.mock('./diff-lint.js', () => ({ lintDiff: mockLintDiff }));
 vi.mock('./prompt-assembler.js', () => ({ assemblePrompt: mockAssemblePrompt }));
@@ -111,6 +111,10 @@ const baseConfig: Config = {
   skipDeterministicCheck: false,
   skipPostFixValidation: false,
   skipDiffLint: false,
+  // Phase 05: auto-merge defaults — disabled by default (MRG-01 safe-default)
+  enableAutoMerge: false,
+  autoMergePassRate: 1.0,
+  autoMergeFixClasses: 'selectors',
 } as Config;
 
 const validPayload = {

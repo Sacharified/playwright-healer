@@ -426,9 +426,40 @@ export async function openHealerPr(args: OpenHealerPrArgs): Promise<string> {
     body,
   });
 
+  // ── Phase 05: auto-merge gate (CONTEXT D-04 / D-08 — only on no-existing-PR path) ──
+  const decision = evaluateAutoMerge({
+    validation: args.validation,
+    autoMergePassRate: args.autoMergePassRate,
+    fixClass: args.fixClass,
+    autoMergeFixClasses: args.autoMergeFixClasses,
+    patchedFiles: args.patchedFiles,
+  });
+
+  let enableResult: EnableAutoMergeResult | null = null;
+  if (args.enableAutoMerge && decision.eligible) {
+    if (!pr.node_id) {
+      // Defensive: openapi-types says node_id is `string | undefined`. In practice
+      // GitHub always populates it, but guard so the gate degrades to soft-fail
+      // rather than throwing a TypeError on the mutation call.
+      enableResult = { errorMessage: 'PR creation succeeded but node_id missing — cannot enable auto-merge' };
+      core.warning(
+        'Auto-merge enable skipped: PR creation succeeded but node_id missing — cannot enable auto-merge.',
+      );
+    } else {
+      enableResult = await enableAutoMerge(octokit, pr.node_id);
+      if (enableResult.errorMessage) {
+        core.warning(
+          `Auto-merge enable failed: ${enableResult.errorMessage} — leaving PR open for review. see README §auto-merge-prerequisites.`,
+        );
+      }
+    }
+  }
+
+  const bandLines = renderAutoMergeBand(decision, args.enableAutoMerge, enableResult);
+
   // D-11 step summary parity (no secrets in summary)
   await core.summary
-    .addRaw(`## Healer PR opened\n\n[${title}](${pr.html_url})\n\n${body}`)
+    .addRaw(`## Healer PR opened\n\n[${title}](${pr.html_url})\n\n${body}\n\n${bandLines.join('\n')}`)
     .write();
 
   return pr.html_url;

@@ -36,7 +36,7 @@ import { createGeminiAdapter } from './adapters/gemini.js';
 import { createGithubAdapter } from './adapters/github.js';
 import { anthropicAdapter } from './adapters/anthropic.js';
 import { ollamaAdapter } from './adapters/ollama.js';
-import { openHealerPr } from './pr-writer.js';
+import { openHealerPr, extractPatchedFiles } from './pr-writer.js';
 import { openIssue } from './issue-writer.js';
 import { shouldSkipHeal } from '../shared/loop-guard.js';
 import { appendHealEvent, bootstrapOrGetWorktree, removeWorktree } from '../shared/state-branch.js';
@@ -351,6 +351,13 @@ export async function run(config: Config): Promise<void> {
 
     // ── Step 11: Open the PR (PRI-01 / PRI-02 / SC-1) ───────────────────
     // costUsd: stats.usdSpent — REAL data per PRI-02 (revised 2026-04-26).
+    // Phase 05: auto-merge gate fields threaded from config + diff.
+    const autoMergeFixClasses = config.autoMergeFixClasses
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const patchedFiles = extractPatchedFiles(proposal.diff);
+
     const prUrl = await openHealerPr({
       patToken: config.healerToken,
       owner,
@@ -366,6 +373,11 @@ export async function run(config: Config): Promise<void> {
       costUsd: stats.usdSpent,
       triggeringRunUrl,
       traceLink: null,
+      // Phase 05:
+      enableAutoMerge: config.enableAutoMerge,
+      autoMergePassRate: config.autoMergePassRate,
+      autoMergeFixClasses,
+      patchedFiles,
     });
 
     // Phase 04 — heal-event write site #1 (Pitfall 7): PR opened successfully.
