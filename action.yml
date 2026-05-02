@@ -212,7 +212,9 @@ runs:
         TEST_TITLE: ${{ github.event.inputs.testTitle }}
         TRIGGERING_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        bash -c "exec ${{ inputs.start_command }}" &
+        # `exec` cannot wrap a shell builtin like `cd` (caused: bash: line 1: exec: cd: not found).
+        # Plain `bash -c "$cmd" &` already creates a subshell whose pid is captured by $!.
+        bash -c "${{ inputs.start_command }}" &
         echo $! > /tmp/playwright-healer-app-pid
         ${{ github.action_path }}/node_modules/.bin/tsx ${{ github.action_path }}/src/healer/wait-for-ready.ts
 
