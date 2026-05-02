@@ -8,6 +8,6 @@ import { test, expect } from '@playwright/test';
 // re-running the E2E requires reverting this file to its broken form first.
 test('clicks submit button and sees confirmation', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#wrong-id').click();
+  await page.getByRole('button', { name: 'Submit' }).click();
   await expect(page.locator('#message')).toHaveText('Submitted!');
 });
