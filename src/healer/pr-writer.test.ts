@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const mockPullsCreate = vi.fn();
 const mockPullsList = vi.fn();
 const mockIssuesCreateComment = vi.fn();
+const mockGraphql = vi.fn(); // Task 3: graphql mock for enableAutoMerge tests
 
 vi.mock('@octokit/rest', () => ({
   Octokit: vi.fn().mockImplementation(function () {
@@ -11,6 +12,7 @@ vi.mock('@octokit/rest', () => ({
         pulls: { create: mockPullsCreate, list: mockPullsList },
         issues: { create: vi.fn(), createComment: mockIssuesCreateComment },
       },
+      graphql: mockGraphql, // Task 3: expose graphql on the mock instance
     };
   }),
 }));
@@ -23,9 +25,10 @@ vi.mock('@actions/core', () => ({
   warning: vi.fn(),
 }));
 
-import { openHealerPr, renderPrBody, evaluateAutoMerge, type AutoMergeDecision } from './pr-writer.js';
+import { openHealerPr, renderPrBody, evaluateAutoMerge, enableAutoMerge, renderAutoMergeBand, type AutoMergeDecision } from './pr-writer.js';
 import { Octokit } from '@octokit/rest';
 import * as core from '@actions/core';
+import { GraphqlResponseError } from '@octokit/graphql';
 
 const mkArgs = (over: any = {}) => ({
   patToken: 'pat-secret-12345',
@@ -59,8 +62,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: no existing PR (dedup returns empty)
   mockPullsList.mockResolvedValue({ data: [] });
-  mockPullsCreate.mockResolvedValue({ data: { html_url: 'https://github.com/octocat/repo/pull/42' } });
+  mockPullsCreate.mockResolvedValue({ data: { html_url: 'https://github.com/octocat/repo/pull/42', node_id: 'PR_kwabc123' } });
   mockIssuesCreateComment.mockResolvedValue({});
+  // mockGraphql has no default implementation — each test sets its own mock
 });
 
 describe('pr-writer — PRI-01 (title + branch)', () => {
@@ -573,6 +577,223 @@ describe('pr-writer — Phase 05 evaluateAutoMerge — eligible aggregation', ()
     ];
     for (const args of cases) {
       expect(evaluateAutoMerge(args).conditions.length).toBe(4);
+    }
+  });
+});
+
+// ── Phase 05: enableAutoMerge() and renderAutoMergeBand() tests ──────────────
+
+/** Helper to build a GraphqlResponseError for soft-fail tests */
+const mkGraphqlError = (errors: Array<{ message: string; type: string }>) =>
+  new GraphqlResponseError(
+    { method: 'POST', url: '/graphql', headers: {}, query: '...', variables: {} } as any,
+    {} as any,
+    {
+      data: null,
+      errors: errors.map((e) => ({
+        ...e,
+        path: [],
+        extensions: {},
+        locations: [{ line: 1, column: 1 }],
+      })),
+    } as any,
+  );
+
+describe('pr-writer — Phase 05 enableAutoMerge — happy path (MRG-03)', () => {
+  it('EA1: mutation called with correct variables, returns enabledAt', async () => {
+    mockGraphql.mockResolvedValueOnce({
+      enablePullRequestAutoMerge: {
+        pullRequest: { autoMergeRequest: { enabledAt: '2026-05-02T10:00:00Z', mergeMethod: 'SQUASH' } },
+      },
+    });
+    const octokit = new Octokit({ auth: 'test' });
+    const result = await enableAutoMerge(octokit, 'PR_kwabc');
+    expect(mockGraphql).toHaveBeenCalledTimes(1);
+    const [mutationStr, variables] = mockGraphql.mock.calls[0];
+    expect(mutationStr).toContain('enablePullRequestAutoMerge');
+    expect(variables).toEqual({ pullRequestId: 'PR_kwabc', mergeMethod: 'SQUASH' });
+    expect(result.enabledAt).toBe('2026-05-02T10:00:00Z');
+    expect(result.errorMessage).toBeUndefined();
+  });
+
+  it('EA2: variables do NOT contain commitHeadline, commitBody, expectedHeadOid, authorEmail (T-05-06)', async () => {
+    mockGraphql.mockResolvedValueOnce({
+      enablePullRequestAutoMerge: {
+        pullRequest: { autoMergeRequest: { enabledAt: '2026-05-02T10:00:00Z', mergeMethod: 'SQUASH' } },
+      },
+    });
+    const octokit = new Octokit({ auth: 'test' });
+    await enableAutoMerge(octokit, 'PR_kwabc');
+    const [, variables] = mockGraphql.mock.calls[0];
+    expect(variables).not.toHaveProperty('commitHeadline');
+    expect(variables).not.toHaveProperty('commitBody');
+    expect(variables).not.toHaveProperty('expectedHeadOid');
+    expect(variables).not.toHaveProperty('authorEmail');
+    expect(variables).not.toHaveProperty('clientMutationId');
+  });
+});
+
+describe('pr-writer — Phase 05 enableAutoMerge — soft-fail GraphqlResponseError (D-05)', () => {
+  it('EF1: branch protection error → returns errorMessage, does not throw', async () => {
+    mockGraphql.mockRejectedValueOnce(mkGraphqlError([{ message: 'Branch is not protected', type: 'PROTECTED_BRANCH' }]));
+    const octokit = new Octokit({ auth: 'test' });
+    const result = await enableAutoMerge(octokit, 'PR_kwabc');
+    expect(result.errorMessage).toBe('Branch is not protected');
+    expect(result.enabledAt).toBeUndefined();
+  });
+
+  it('EF2: multiple error messages joined with semicolon', async () => {
+    mockGraphql.mockRejectedValueOnce(mkGraphqlError([
+      { message: 'Branch is not protected', type: 'PROTECTED_BRANCH' },
+      { message: 'Auto-merge not enabled', type: 'AUTO_MERGE_NOT_ENABLED' },
+    ]));
+    const octokit = new Octokit({ auth: 'test' });
+    const result = await enableAutoMerge(octokit, 'PR_kwabc');
+    expect(result.errorMessage).toBe('Branch is not protected; Auto-merge not enabled');
+  });
+
+  it('EF3: empty errors array → falls back to err.message', async () => {
+    const err = mkGraphqlError([]);
+    // GraphqlResponseError with no errors[] — err.message falls back
+    mockGraphql.mockRejectedValueOnce(err);
+    const octokit = new Octokit({ auth: 'test' });
+    const result = await enableAutoMerge(octokit, 'PR_kwabc');
+    expect(result.errorMessage).toBeDefined();
+    expect(typeof result.errorMessage).toBe('string');
+  });
+});
+
+describe('pr-writer — Phase 05 enableAutoMerge — soft-fail non-GraphQL errors', () => {
+  it('EF4: network error → errorMessage includes Auto-merge enable failed and error text', async () => {
+    mockGraphql.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const octokit = new Octokit({ auth: 'test' });
+    const result = await enableAutoMerge(octokit, 'PR_kwabc');
+    expect(result.errorMessage).toContain('Auto-merge enable failed:');
+    expect(result.errorMessage).toContain('ECONNREFUSED');
+  });
+
+  it('EF5: TypeError → errorMessage includes the error text', async () => {
+    mockGraphql.mockRejectedValueOnce(new TypeError('Cannot read properties of undefined'));
+    const octokit = new Octokit({ auth: 'test' });
+    const result = await enableAutoMerge(octokit, 'PR_kwabc');
+    expect(result.errorMessage).toContain('Auto-merge enable failed:');
+    expect(result.errorMessage).toContain('Cannot read properties of undefined');
+  });
+});
+
+describe('pr-writer — Phase 05 renderAutoMergeBand — preview mode (enable=false)', () => {
+  const allMatched: AutoMergeDecision = {
+    eligible: true,
+    conditions: [
+      { condition: 'pass_rate', result: 'matched', reason: '10/10 passed (≥ 1)' },
+      { condition: 'fix_class', result: 'matched', reason: 'selectors in allow-list (selectors)' },
+      { condition: 'scope', result: 'matched', reason: 'all patched files in tests/, e2e/, or playwright/' },
+      { condition: 'config_files', result: 'matched', reason: 'no config files patched' },
+    ],
+  };
+  const oneBlocked: AutoMergeDecision = {
+    eligible: false,
+    conditions: [
+      { condition: 'pass_rate', result: 'matched', reason: '10/10 passed (≥ 1)' },
+      { condition: 'fix_class', result: 'blocked', reason: 'waits not in allow-list (selectors)' },
+      { condition: 'scope', result: 'matched', reason: 'all patched files in tests/, e2e/, or playwright/' },
+      { condition: 'config_files', result: 'matched', reason: 'no config files patched' },
+    ],
+  };
+
+  it('RB1: eligible but not enabled → outcome row contains enable_auto_merge=false (informational only)', () => {
+    const band = renderAutoMergeBand(allMatched, false, null);
+    const outcomeRow = band.find(l => l.includes('auto_merge'));
+    expect(outcomeRow).toMatch(/\| auto_merge \| eligible \| enable_auto_merge=false/);
+  });
+
+  it('RB2: ineligible → outcome row reads blocked + enable_auto_merge=false (informational only)', () => {
+    const band = renderAutoMergeBand(oneBlocked, false, null);
+    const outcomeRow = band.find(l => l.includes('auto_merge'));
+    expect(outcomeRow).toMatch(/\| auto_merge \| blocked \| enable_auto_merge=false \(informational only\)/);
+  });
+});
+
+describe('pr-writer — Phase 05 renderAutoMergeBand — live mode (enable=true)', () => {
+  const allMatched: AutoMergeDecision = {
+    eligible: true,
+    conditions: [
+      { condition: 'pass_rate', result: 'matched', reason: '10/10 passed (≥ 1)' },
+      { condition: 'fix_class', result: 'matched', reason: 'selectors in allow-list (selectors)' },
+      { condition: 'scope', result: 'matched', reason: 'all patched files in tests/, e2e/, or playwright/' },
+      { condition: 'config_files', result: 'matched', reason: 'no config files patched' },
+    ],
+  };
+  const oneBlocked: AutoMergeDecision = {
+    eligible: false,
+    conditions: [
+      { condition: 'pass_rate', result: 'matched', reason: '10/10 passed (≥ 1)' },
+      { condition: 'fix_class', result: 'blocked', reason: 'waits not in allow-list (selectors)' },
+      { condition: 'scope', result: 'matched', reason: 'all patched files in tests/, e2e/, or playwright/' },
+      { condition: 'config_files', result: 'matched', reason: 'no config files patched' },
+    ],
+  };
+
+  it('RB3: ineligible blocks early → outcome row one or more conditions failed', () => {
+    const band = renderAutoMergeBand(oneBlocked, true, null);
+    const outcomeRow = band.find(l => l.includes('auto_merge'));
+    expect(outcomeRow).toContain('one or more conditions failed');
+  });
+
+  it('RB4: mutation error → outcome row contains error msg and see README', () => {
+    const band = renderAutoMergeBand(allMatched, true, { errorMessage: 'Branch is not protected' });
+    const outcomeRow = band.find(l => l.includes('auto_merge'));
+    expect(outcomeRow).toContain('Branch is not protected');
+    expect(outcomeRow).toContain('see README §auto-merge-prerequisites');
+  });
+
+  it('RB5: success → outcome row contains enabled, mutation succeeded, ISO timestamp', () => {
+    const band = renderAutoMergeBand(allMatched, true, { enabledAt: '2026-05-02T10:00:00Z' });
+    const outcomeRow = band.find(l => l.includes('auto_merge'));
+    expect(outcomeRow).toContain('enabled');
+    expect(outcomeRow).toContain('mutation succeeded');
+    expect(outcomeRow).toContain('2026-05-02T10:00:00Z');
+  });
+});
+
+describe('pr-writer — Phase 05 renderAutoMergeBand — table structure', () => {
+  const allMatched: AutoMergeDecision = {
+    eligible: true,
+    conditions: [
+      { condition: 'pass_rate', result: 'matched', reason: '10/10 passed (≥ 1)' },
+      { condition: 'fix_class', result: 'matched', reason: 'selectors in allow-list (selectors)' },
+      { condition: 'scope', result: 'matched', reason: 'all patched files in tests/, e2e/, or playwright/' },
+      { condition: 'config_files', result: 'matched', reason: 'no config files patched' },
+    ],
+  };
+
+  it('RB6: band structure — heading, header, separator, 4 condition rows, 1 outcome row, total ≥7 elements', () => {
+    const band = renderAutoMergeBand(allMatched, false, null);
+    expect(band[0]).toBe('## Auto-merge decision');
+    expect(band).toContain('| Condition | Result | Reason |');
+    expect(band).toContain('| --- | --- | --- |');
+    // 4 condition rows
+    const conditionRows = band.filter(l => /\| (pass_rate|fix_class|scope|config_files) \|/.test(l));
+    expect(conditionRows.length).toBe(4);
+    // verify order
+    expect(conditionRows[0]).toContain('pass_rate');
+    expect(conditionRows[1]).toContain('fix_class');
+    expect(conditionRows[2]).toContain('scope');
+    expect(conditionRows[3]).toContain('config_files');
+    // outcome row
+    const outcomeRow = band.find(l => l.includes('auto_merge'));
+    expect(outcomeRow).toBeDefined();
+    expect(band.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it('RB7: every condition row contains exactly two " | " separators (well-formed markdown)', () => {
+    const band = renderAutoMergeBand(allMatched, false, null);
+    const conditionRows = band.filter(l => /\| (pass_rate|fix_class|scope|config_files) \|/.test(l));
+    for (const row of conditionRows) {
+      // Remove leading/trailing pipes, count interior " | " separators
+      const interior = row.replace(/^\| | \|$/g, '');
+      const separatorCount = (interior.match(/ \| /g) ?? []).length;
+      expect(separatorCount).toBe(2);
     }
   });
 });
