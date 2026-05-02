@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04-04-PLAN.md — heal-cap DET-07 + WR-01/02/03 backlog + worktree-leak fix
-last_updated: "2026-05-01T23:51:02.132Z"
-last_activity: 2026-05-01
+status: verifying
+stopped_at: "Completed 04-05-PLAN.md automated tasks (Tasks 1-2); checkpoint:human-verify Task 3 pending maintainer UAT"
+last_updated: "2026-05-02T00:00:49.655Z"
+last_activity: 2026-05-02
 progress:
   total_phases: 10
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 38
-  completed_plans: 39
+  completed_plans: 40
   percent: 100
 ---
 
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 Phase: 4
 Plan: 5 of 5
-Status: Ready to execute
-Last activity: 2026-05-01
+Status: Phase complete — ready for verification
+Last activity: 2026-05-02
 
 Progress: [██████████] 100%
 
@@ -66,6 +66,7 @@ Progress: [██████████] 100%
 | Phase 04-auto-dispatch-full-fix-classes-deduplication P02 | 8 | 3 tasks | 17 files |
 | Phase 04-auto-dispatch-full-fix-classes-deduplication P04 | ~35m | 3 tasks | 15 files |
 | Phase 04 P04 | ~50m | 3 tasks | 17 files |
+| Phase 04-auto-dispatch-full-fix-classes-deduplication P05 | ~20m (automated tasks only; UAT pending) | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,9 @@ Recent decisions affecting current work:
 - Phase 04 Plan 04: Guard 3 bootstrap failure non-fatal — blocking all heals on state-branch error worse than single cap-bypass
 - Phase 04 Plan 04: security-lint Check 5 excludes itself via --exclude=security-lint.yml to avoid self-referential false positive from grep command string
 - Worktree leak fix: Step 1.5 merged into outer try-block so outer finally always runs removeWorktree on all exit paths including cap-hit return
+- concurrencyKey default sentinel in e2e-heal-self.yml: required:true with constant default 'manual-broken-selector-default' — satisfies DET-07 schema while keeping manual hand-dispatch workable
+- cancel-in-progress: false in concurrency block — queue not cancel (CONTEXT D-03: preserve both runs' detection evidence if they raced)
+- skip_post_fix_validation commented out not deleted — one-line revert path for demo rollback; Phase 04 re-engages validation gate
 
 ### Pending Todos
 
@@ -143,8 +147,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-01T23:51:02.129Z
-Stopped at: Completed 04-04-PLAN.md — heal-cap DET-07 + WR-01/02/03 backlog + worktree-leak fix
+Last session: 2026-05-02T00:00:49.653Z
+Stopped at: Completed 04-05-PLAN.md automated tasks (Tasks 1-2); checkpoint:human-verify Task 3 pending maintainer UAT
 Resume file: None
 
 **Planned Phase:** 04 (auto-dispatch-full-fix-classes-deduplication) — 5 plans — 2026-05-01T18:12:08.757Z
