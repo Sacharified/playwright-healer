@@ -1,1 +1,2 @@
 {"schemaVersion":1,"timestamp":"2026-05-02T01:48:05.263Z","testId":"fixture/tests/broken-selector.spec.ts::clicks submit button and sees confirmation","outcome":"issue-opened","dispatchRunId":"25240708504","issueUrl":"https://github.com/Sacharified/playwright-healer/issues/11"}
+{"schemaVersion":1,"timestamp":"2026-05-02T08:33:35.506Z","testId":"fixture/tests/broken-selector.spec.ts::clicks submit button and sees confirmation","outcome":"issue-opened","dispatchRunId":"25247935856","issueUrl":"https://github.com/Sacharified/playwright-healer/issues/11"}
