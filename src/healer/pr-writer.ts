@@ -26,6 +26,17 @@ export interface OpenHealerPrArgs {
   costUsd: number;
   triggeringRunUrl: string;
   traceLink: string | null;
+  // ── Phase 05 (Plan 01 — interface widening only; Plan 02 lands the gate logic) ──
+  // Auto-merge config from src/shared/config.ts. The fix-classes string is
+  // already split-and-trimmed by the index.ts call site; this interface receives
+  // the array form so the gate stays a pure function over its inputs.
+  enableAutoMerge: boolean;
+  autoMergePassRate: number;
+  autoMergeFixClasses: string[];
+  // Per-heal data: list of files in the agent's diff (extracted from `proposal.diff`
+  // via Plan 02's `extractPatchedFiles()` helper). Used by the gate's scope and
+  // config-file conditions (CONTEXT D-02 / D-03).
+  patchedFiles: string[];
 }
 
 export function renderPrBody(args: OpenHealerPrArgs): string {
