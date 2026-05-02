@@ -134,6 +134,19 @@ inputs:
     required: false
     default: 'playwright-healer.yml'
 
+  enable_auto_merge:
+    description: 'Enable auto-merge for eligible healer PRs (Phase 5+). Opt-in safe-default. Default: false. See README §auto-merge-prerequisites for branch-protection requirements.'
+    required: false
+    default: 'false'
+  auto_merge_pass_rate:
+    description: 'Minimum validation pass rate (0..1) for auto-merge eligibility. Stricter than rerun_pass_rate (0.9 default). Default: 1.0 (10/10).'
+    required: false
+    default: '1.0'
+  auto_merge_fix_classes:
+    description: 'Comma-separated fix classes eligible for auto-merge. Conservative default — only proven classes. Default: selectors'
+    required: false
+    default: 'selectors'
+
   skip_deterministic_check:
     description: 'Skip the deterministic-failure gate (demo mode only). Set true to let the healer attempt a fix on an always-failing test. Default: false'
     required: false
@@ -265,6 +278,9 @@ runs:
         INPUT_SKIP_DIFF_LINT: ${{ inputs.skip_diff_lint }}
         INPUT_ENABLE_AUTO_DISPATCH: ${{ inputs.enable_auto_dispatch }}
         INPUT_HEALER_WORKFLOW_FILE: ${{ inputs.healer_workflow_file }}
+        INPUT_ENABLE_AUTO_MERGE: ${{ inputs.enable_auto_merge }}
+        INPUT_AUTO_MERGE_PASS_RATE: ${{ inputs.auto_merge_pass_rate }}
+        INPUT_AUTO_MERGE_FIX_CLASSES: ${{ inputs.auto_merge_fix_classes }}
         # Phase 3 — orchestrator reads HEALER_DEFAULT_BRANCH for fix-applier rebase target
         HEALER_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: ./node_modules/.bin/tsx src/index.ts
