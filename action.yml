@@ -232,6 +232,11 @@ runs:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_API_KEY: ${{ inputs.api_key }}
         INPUT_HEALER_TOKEN: ${{ inputs.healer_token }}
+        # Plain HEALER_TOKEN duplicates INPUT_HEALER_TOKEN so state-branch.ts's
+        # gitCredentialFlags() helper picks it up via process.env (read paths —
+        # ls-remote, fetch — need inline auth on private repos because checkout
+        # runs with persist-credentials: false).
+        HEALER_TOKEN: ${{ inputs.healer_token }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_SETUP_COMMAND: ${{ inputs.setup_command }}
         INPUT_START_COMMAND: ${{ inputs.start_command }}

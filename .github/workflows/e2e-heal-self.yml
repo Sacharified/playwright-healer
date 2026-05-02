@@ -175,9 +175,13 @@ jobs:
           # only, preventing accidental modifications to action source.
           skip_diff_lint: 'false'
 
-  # ── Job 3: Verify a healer PR was opened on this repo ──
-  assert-pr-opened:
-    name: Assert healer PR exists
+  # ── Job 3: Verify the heal job produced an artifact (PR OR issue) ──
+  # Per D-09 routing tree: a successful heal lands a PR; a heal where post-fix
+  # validation or diff-lint blocks routes to an issue. Both are valid outcomes
+  # of an end-to-end heal — what we're verifying is "an artifact was created
+  # for this run", not "a PR specifically was created".
+  assert-artifact-opened:
+    name: Assert healer artifact (PR or issue) exists
     needs: heal
     runs-on: ubuntu-latest
     steps:
@@ -185,10 +189,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Wait briefly for PR creation propagation
+      - name: Wait briefly for PR/issue creation propagation
         run: sleep 5
 
-      - name: Verify a healer PR was opened
+      - name: Verify a healer artifact was opened
         env:
           GH_TOKEN: ${{ secrets.HEALER_PAT }}
         run: |
@@ -199,11 +203,26 @@ jobs:
             --json number,title,url \
             --limit 5)
           PR_COUNT=$(echo "$PR_JSON" | jq 'length')
-          if [ "$PR_COUNT" -eq 0 ]; then
-            echo "::error::No healer PR was opened. Heal job appeared to succeed but no PR exists."
+          ISSUE_JSON=$(gh issue list \
+            -R ${{ github.repository }} \
+            --search "[playwright-healer] in:title" \
+            --state open \
+            --json number,title,url \
+            --limit 5)
+          ISSUE_COUNT=$(echo "$ISSUE_JSON" | jq 'length')
+          if [ "$PR_COUNT" -eq 0 ] && [ "$ISSUE_COUNT" -eq 0 ]; then
+            echo "::error::No healer PR or issue was opened. Heal job appeared to succeed but no artifact exists."
             exit 1
           fi
-          echo "Found $PR_COUNT healer PR(s):"
-          echo "$PR_JSON" | jq -r '.[] | "  #\(.number): \(.title)\n  \(.url)"'
-          echo
-          echo "::notice::E2E self-heal verified end-to-end."
+          if [ "$PR_COUNT" -gt 0 ]; then
+            echo "Found $PR_COUNT healer PR(s):"
+            echo "$PR_JSON" | jq -r '.[] | "  #\(.number): \(.title)\n  \(.url)"'
+            echo
+            echo "::notice::E2E self-heal verified — landed a PR (post-fix validation passed)."
+          fi
+          if [ "$ISSUE_COUNT" -gt 0 ]; then
+            echo "Found $ISSUE_COUNT healer issue(s):"
+            echo "$ISSUE_JSON" | jq -r '.[] | "  #\(.number): \(.title)\n  \(.url)"'
+            echo
+            echo "::notice::E2E self-heal verified — landed an issue (D-09 routed to issue path because post-fix validation/diff-lint blocked the fix). This is a valid Phase 4 outcome."
+          fi
