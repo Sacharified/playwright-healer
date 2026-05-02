@@ -6,6 +6,7 @@
 // via GITHUB_TOKEN do not trigger downstream CI (Pitfall 1), making SC-1 vacuous.
 
 import { Octokit } from '@octokit/rest';
+import { GraphqlResponseError } from '@octokit/graphql';
 import * as core from '@actions/core';
 import { SKIP_SENTINEL } from '../shared/loop-guard.js';
 import type { ValidationResult } from './validator.js';
@@ -161,6 +162,107 @@ export function evaluateAutoMerge(args: EvaluateAutoMergeArgs): AutoMergeDecisio
 
   const eligible = conditions.every((c) => c.result === 'matched');
   return { eligible, conditions };
+}
+
+// ── Phase 05: GraphQL enablePullRequestAutoMerge wrapper (MRG-03) ───────────
+
+const ENABLE_AUTO_MERGE_MUTATION = /* GraphQL */ `
+  mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+    enablePullRequestAutoMerge(input: {
+      pullRequestId: $pullRequestId,
+      mergeMethod: $mergeMethod
+    }) {
+      pullRequest {
+        autoMergeRequest {
+          enabledAt
+          mergeMethod
+        }
+      }
+    }
+  }
+`;
+
+interface EnableAutoMergeResponse {
+  enablePullRequestAutoMerge: {
+    pullRequest: { autoMergeRequest: { enabledAt: string; mergeMethod: 'SQUASH' | 'MERGE' | 'REBASE' } };
+  };
+}
+
+export interface EnableAutoMergeResult {
+  /** Populated on success. ISO-8601 timestamp from GitHub. */
+  enabledAt?: string;
+  /** Populated on failure (D-05 soft-fail). Joined GraphQL error messages or stringified non-GraphQL exception. */
+  errorMessage?: string;
+}
+
+/**
+ * Enable auto-merge on a PR via GitHub's GraphQL `enablePullRequestAutoMerge` mutation.
+ *
+ * D-05 soft-fail: catches BOTH `GraphqlResponseError` (mutation rejected — typically due
+ * to missing branch protection / "Allow auto-merge" toggle off / squash merging not
+ * enabled at repo level) AND any other thrown error (network, timeout, etc.). Returns
+ * a result object instead of throwing — heal pipeline never aborts on auto-merge
+ * failures (PR is already open and useful for human review).
+ *
+ * Mutation called WITHOUT commitHeadline/commitBody — repo defaults apply, which means
+ * the squash commit reuses the PR body and KEEPS the loop-guard SKIP_SENTINEL (T-05-06).
+ */
+export async function enableAutoMerge(
+  octokit: Octokit,
+  prNodeId: string,
+): Promise<EnableAutoMergeResult> {
+  try {
+    const data = await octokit.graphql<EnableAutoMergeResponse>(ENABLE_AUTO_MERGE_MUTATION, {
+      pullRequestId: prNodeId,
+      mergeMethod: 'SQUASH',
+    });
+    return { enabledAt: data.enablePullRequestAutoMerge.pullRequest.autoMergeRequest.enabledAt };
+  } catch (err) {
+    if (err instanceof GraphqlResponseError) {
+      const messages = (err.errors ?? []).map((e) => e.message).filter(Boolean);
+      const summary = messages.length > 0 ? messages.join('; ') : err.message;
+      return { errorMessage: summary };
+    }
+    return { errorMessage: `Auto-merge enable failed: ${String(err)}` };
+  }
+}
+
+// ── Phase 05: Reasoning-band renderer (MRG-04) ──────────────────────────────
+
+/**
+ * Render the reasoning band markdown — string[] of lines for joining into core.summary.
+ *
+ * MRG-04: emit per-condition table + final outcome row. The band ALWAYS renders when a
+ * PR is created (D-09), regardless of `enableAutoMerge` flag value, so consumers can
+ * preview eligibility before flipping the flag on (matches Phase 04 D-01 log-only-then-live
+ * pattern).
+ */
+export function renderAutoMergeBand(
+  decision: AutoMergeDecision,
+  enabledFlag: boolean,
+  enableResult: EnableAutoMergeResult | null,
+): string[] {
+  const tableHead = ['| Condition | Result | Reason |', '| --- | --- | --- |'];
+  const rows = decision.conditions.map(
+    (c) => `| ${c.condition} | ${c.result} | ${c.reason} |`,
+  );
+
+  let outcomeRow: string;
+  if (!enabledFlag) {
+    const outcome = decision.eligible ? 'eligible' : 'blocked';
+    outcomeRow = `| auto_merge | ${outcome} | enable_auto_merge=false (informational only) |`;
+  } else if (!decision.eligible) {
+    outcomeRow = `| auto_merge | blocked | one or more conditions failed |`;
+  } else if (enableResult?.errorMessage) {
+    outcomeRow = `| auto_merge | blocked | ${enableResult.errorMessage} — see README §auto-merge-prerequisites |`;
+  } else if (enableResult?.enabledAt) {
+    outcomeRow = `| auto_merge | enabled | mutation succeeded at ${enableResult.enabledAt} |`;
+  } else {
+    // Defensive — shouldn't reach here in normal flow
+    outcomeRow = `| auto_merge | unknown | gate state inconsistent |`;
+  }
+
+  return ['## Auto-merge decision', '', ...tableHead, ...rows, outcomeRow, ''];
 }
 
 export interface OpenHealerPrArgs {
