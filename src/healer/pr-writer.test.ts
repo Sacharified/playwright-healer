@@ -797,3 +797,142 @@ describe('pr-writer — Phase 05 renderAutoMergeBand — table structure', () =>
     }
   });
 });
+
+// ── Phase 05: openHealerPr integration tests (Task 4) ───────────────────────
+
+describe('pr-writer — Phase 05 openHealerPr integration — gate fires post-create only', () => {
+  it('IN1: eligible + enable=false → mockGraphql NEVER called, band renders with informational-only', async () => {
+    await openHealerPr(mkArgs({
+      enableAutoMerge: false,
+      patchedFiles: ['tests/foo.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+      autoMergeFixClasses: ['selectors'],
+      fixClass: 'selectors' as const,
+    }));
+    expect(mockGraphql).not.toHaveBeenCalled();
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('## Auto-merge decision');
+    expect(summaryCall).toContain('enable_auto_merge=false (informational only)');
+  });
+
+  it('IN2: eligible + enable=true + mutation succeeds → graphql called with node_id + SQUASH, summary shows mutation succeeded', async () => {
+    mockGraphql.mockResolvedValueOnce({
+      enablePullRequestAutoMerge: {
+        pullRequest: { autoMergeRequest: { enabledAt: '2026-05-02T10:00:00Z', mergeMethod: 'SQUASH' } },
+      },
+    });
+    await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      patchedFiles: ['tests/foo.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+      autoMergeFixClasses: ['selectors'],
+      fixClass: 'selectors' as const,
+    }));
+    expect(mockGraphql).toHaveBeenCalledTimes(1);
+    const [, variables] = mockGraphql.mock.calls[0];
+    expect(variables).toEqual({ pullRequestId: 'PR_kwabc123', mergeMethod: 'SQUASH' });
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('mutation succeeded at 2026-05-02T10:00:00Z');
+  });
+
+  it('IN3: eligible + enable=true + mutation fails → core.warning + PR url returned + summary shows error', async () => {
+    mockGraphql.mockRejectedValueOnce(
+      mkGraphqlError([{ message: 'Branch is not protected', type: 'PROTECTED_BRANCH' }]),
+    );
+    const url = await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      patchedFiles: ['tests/foo.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+      autoMergeFixClasses: ['selectors'],
+      fixClass: 'selectors' as const,
+    }));
+    expect(url).toBe('https://github.com/octocat/repo/pull/42');
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('Branch is not protected'),
+    );
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('see README §auto-merge-prerequisites'),
+    );
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('Branch is not protected');
+  });
+
+  it('IN4: ineligible fix_class blocked → graphql NEVER called even with enable=true', async () => {
+    await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      fixClass: 'waits' as const,
+      autoMergeFixClasses: ['selectors'],
+      patchedFiles: ['tests/foo.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+    }));
+    expect(mockGraphql).not.toHaveBeenCalled();
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('one or more conditions failed');
+    expect(summaryCall).toContain('waits not in allow-list');
+  });
+
+  it('IN5: ineligible scope blocked → graphql NEVER called', async () => {
+    await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      patchedFiles: ['src/foo.ts', 'tests/bar.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+    }));
+    expect(mockGraphql).not.toHaveBeenCalled();
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('files outside test directory (src/foo.ts)');
+  });
+
+  it('IN6: ineligible config_files blocked → graphql NEVER called', async () => {
+    await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      patchedFiles: ['playwright.config.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+    }));
+    expect(mockGraphql).not.toHaveBeenCalled();
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('configuration file change (playwright.config.ts)');
+  });
+
+  it('IN7: D-07 validation skipped (total=0) → graphql NEVER called', async () => {
+    await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      validation: { passed: 0, total: 0, passRate: 0, perRun: [] },
+      patchedFiles: ['tests/foo.spec.ts'],
+    }));
+    expect(mockGraphql).not.toHaveBeenCalled();
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('validation skipped (demo mode)');
+  });
+
+  it('IN8: D-08 dedup branch bypasses gate entirely → graphql NEVER called, summary has dedup heading NOT auto-merge decision', async () => {
+    mockPullsList.mockResolvedValue({
+      data: [{ number: 42, html_url: 'https://github.com/octocat/repo/pull/42' }],
+    });
+    await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      patchedFiles: ['tests/foo.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+    }));
+    expect(mockPullsCreate).not.toHaveBeenCalled();
+    expect(mockGraphql).not.toHaveBeenCalled();
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('Healer PR updated (dedup)');
+    expect(summaryCall).not.toContain('## Auto-merge decision');
+  });
+
+  it('IN9: pr.node_id missing → graphql NEVER called, core.warning with node_id message, PR url returned', async () => {
+    mockPullsCreate.mockResolvedValueOnce({ data: { html_url: 'https://github.com/octocat/repo/pull/42', number: 42 } });
+    const url = await openHealerPr(mkArgs({
+      enableAutoMerge: true,
+      patchedFiles: ['tests/foo.spec.ts'],
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+    }));
+    expect(url).toBe('https://github.com/octocat/repo/pull/42');
+    expect(mockGraphql).not.toHaveBeenCalled();
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('node_id missing'),
+    );
+    const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
+    expect(summaryCall).toContain('PR creation succeeded but node_id missing');
+  });
+});
