@@ -1,0 +1,86 @@
+name: SC-1 Healer (manual dispatch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commitSha:
+        description: 'Commit SHA to heal against (required Phase 04+; pass via -f commitSha=<hex>)'
+        required: false
+        default: ''
+      concurrencyKey:
+        description: 'Concurrency key (required Phase 04+; pass via -f concurrencyKey=<slug-hash>)'
+        required: false
+        default: ''
+      testFile:
+        description: 'Test file path relative to repo root'
+        required: true
+        default: 'fixture/tests/broken-selector.spec.ts'
+      testTitle:
+        description: 'Test title'
+        required: true
+        default: 'clicks submit button and sees confirmation'
+      fixClassHint:
+        description: 'selectors | waits'
+        required: true
+        default: 'selectors'
+      enable_auto_merge:
+        description: 'Enable GitHub auto-merge (Phase 5)'
+        required: false
+        default: 'false'
+      skip_post_fix_validation:
+        description: 'Skip post-fix validation reruns (Phase 03.1 demo flag, default true; set false to make Phase 5 gate go eligible for live D-05 capture)'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      # Cross-repo action access via Settings UI returned 'repository not found'
+      # on first dispatch. Fallback: checkout the action repo to a subpath using
+      # HEALER_PAT (which has 'repo' scope on private Sacharified/playwright-healer)
+      # and reference it via local subpath. This works regardless of cross-repo
+      # action visibility settings.
+      - name: Checkout playwright-healer action source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: Sacharified/playwright-healer
+          path: .healer
+          ref: playwright-healer/clicks-submit-button-and-sees-confirmation-5c12678
+          token: ${{ secrets.HEALER_PAT }}
+          persist-credentials: false
+
+      - uses: ./.healer
+        with:
+          mode: heal
+          commit_sha: ${{ github.event.inputs.commitSha }}
+          provider: gemini
+          model: gemini-2.5-flash
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          healer_token: ${{ secrets.HEALER_PAT }}
+          setup_command: |
+            cd fixture && npm install && npx playwright install --with-deps chromium
+          start_command: bash ${{ github.workspace }}/scripts/start-fixture.sh
+          test_command: cd fixture && npx playwright test
+          base_url: http://localhost:3000
+          rerun_count: '5'
+          rerun_pass_rate: '0.9'
+          max_budget_usd: '1.00'
+          max_turns: '10'
+          startup_timeout_seconds: '60'
+          skip_deterministic_check: 'true'
+          skip_post_fix_validation: ${{ github.event.inputs.skip_post_fix_validation || 'true' }}
+          skip_diff_lint: 'true'
+          enable_auto_merge: ${{ github.event.inputs.enable_auto_merge || 'false' }}
+          auto_merge_pass_rate: '0.9'
+          auto_merge_fix_classes: 'selectors,waits'
