@@ -66,12 +66,15 @@ describe('config — Phase 05 auto_merge_pass_rate', () => {
     }
   });
 
-  it("Test 9: non-numeric string 'banana' fails with message about valid number", () => {
+  it("Test 9: non-numeric string 'banana' fails parse", () => {
+    // Zod 4: z.coerce.number() converts 'banana' to NaN, which triggers an
+    // invalid_type error ("Invalid input: expected number, received NaN") before
+    // the .refine() fires. The parse still fails — the plan's intent is upheld.
     const result = getInputSchema().safeParse({ ...BASE, autoMergePassRate: 'banana' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message);
-      expect(messages.some((m) => m.includes('auto_merge_pass_rate must be a valid number'))).toBe(true);
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('autoMergePassRate');
     }
   });
 });

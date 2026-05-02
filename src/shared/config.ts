@@ -118,6 +118,23 @@ export function getInputSchema() {
     // Configurable so multi-workflow consumers (per-environment heal workflows) can override.
     // Default matches REQUIREMENTS DET-05 phrasing.
     healerWorkflowFile: z.string().min(1).default('playwright-healer.yml'),
+
+    // ── Phase 05: Auto-merge opt-in (CONTEXT D-01: default OFF, safe-default per MRG-01) ──
+    // Same z.string() transform pattern as enableAutoDispatch above. NEVER use
+    // .default('true') — D-01 locks default-OFF.
+    enableAutoMerge: z.string().default('false').transform(v => v === 'true'),
+    // MRG-02: 1.0 (10/10) is the strict default (different from rerun_pass_rate=0.9).
+    // Consumers can lower (e.g. 0.95) at their own risk.
+    autoMergePassRate: z.coerce.number()
+                          .refine((v) => !isNaN(v), {
+                            message: 'auto_merge_pass_rate must be a valid number 0..1 (e.g. 1.0)',
+                          })
+                          .min(0).max(1).default(1.0),
+    // MRG-02 + CONTEXT D-01: comma-string passthrough. Default 'selectors' is conservative
+    // (the only fix class with live demo evidence as of Phase 03.1).
+    // Split-to-array happens at the gate call site (Plan 02), NOT in the schema —
+    // keeps the schema producing a stable string type and lets the gate use string[] directly.
+    autoMergeFixClasses: z.string().default('selectors'),
   }).superRefine((v, ctx) => {
     if (v.provider !== 'ollama' && v.apiKey.length === 0) {
       ctx.addIssue({
@@ -125,6 +142,23 @@ export function getInputSchema() {
         path: ['apiKey'],
         message: 'api_key is required and must be non-empty unless provider is ollama',
       });
+    }
+    // Phase 05 — defensive: enable_auto_merge=true with empty class list is a misconfig
+    // that would silently disable auto-merge. Fail closed at parse time so consumers
+    // see the issue before any heal runs.
+    if (v.enableAutoMerge) {
+      const classes = v.autoMergeFixClasses
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (classes.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['autoMergeFixClasses'],
+          message:
+            'auto_merge_fix_classes must contain at least one class when enable_auto_merge=true (e.g., "selectors")',
+        });
+      }
     }
   });
 }
