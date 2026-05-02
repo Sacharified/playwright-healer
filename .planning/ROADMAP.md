@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** (complete 2026-04-29) - Full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback. 13 plans + 2 gap-closure plans (03-14, 03-15) all shipped; HUMAN-UAT Tests 1+2 PASS (SC-1 PR creation; IN-01 SIGTERM propagation via Scenario 7 run 25110355292)
 - [x] **Phase 3.1: First Heal — End-to-End Demo** (INSERTED 2026-04-29, complete 2026-04-29) - Phase 03 shipped infrastructure but never exercised the heal pipeline against a real LLM in real CI. Demonstrated end-to-end: PR [#1](https://github.com/Sacharified/playwright-healer-test/pull/1) opened with a Gemini-2.5-Flash-generated selector fix; fixture-ci.yml conclusion `success`; total Gemini cost $0.0382 USD. Six Phase-04 hardening items surfaced (clean-true subpath collision, free-tier model default, fix-applier scope leak, fix-applier no-force push, --3way fetch-depth warning, --force-with-lease stale-info on shallow clones).
 - [x] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** (complete 2026-05-02) - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers. SC#4 PRI-04 dedup empirically verified live (run 25247935856). SC#1/2/3 verified statically (403 unit tests + Step A end-to-end heal); live dispatches B/C/D deferred to 04-05-HUMAN-UAT.md.
-- [ ] **Phase 5: Auto-Merge** - Add opt-in auto-merge for high-confidence fixes that pass all trust-chain gates
+- [x] **Phase 5: Auto-Merge** (complete 2026-05-02) - Opt-in `enable_auto_merge` gate: evaluateAutoMerge() four-condition gate, enableAutoMerge() GraphQL mutation with D-05 soft-fail, renderAutoMergeBand() reasoning band. SC#1 + SC#4 verified live (Run 1, PR #3); SC#2 live happy-path deferred to Phase 6 (GitHub Free tier); SC#3 + D-05 verified by unit-level Tests IN5 + EF1-EF5.
 - [ ] **Phase 6: Documentation + Release** - Ship consumer documentation, example workflows, self-test CI, and the first immutable version tag
 
 ## Phase Details
@@ -163,7 +163,10 @@ Plans:
   2. With `enable-auto-merge: true`, a healer PR for a selector fix that passes 10/10 reruns and has CI green is merged automatically; the run summary explains which conditions matched
   3. A healer PR that touches a file outside the configured test directory is blocked from auto-merge and the run summary states "blocked by: files outside test directory" even if all other conditions pass
   4. Auto-merge decisions are written to the step summary with the full reasoning band showing each condition and whether it matched or blocked
-**Plans**: TBD
+**Plans**: 3 plans
+- [x] 05-01-PLAN.md — Config schema foundation: enableAutoMerge/autoMergePassRate/autoMergeFixClasses Zod fields + action.yml inputs + OpenHealerPrArgs interface widening (MRG-01) — Wave 1
+- [x] 05-02-PLAN.md — Gate implementation: evaluateAutoMerge() + enableAutoMerge() GraphQL + renderAutoMergeBand() + wired into openHealerPr() + index.ts call site (MRG-02, MRG-03, MRG-04) — Wave 2 (depends on 01)
+- [x] 05-03-PLAN.md — UAT verification: README §Auto-merge prerequisites stub (D-10) + four-run evidence record (SC#1-SC#4 + D-05/D-07/D-08/T-05-06); SC#2 live deferred to Phase 6 — Wave 3 (depends on 01, 02)
 
 ### Phase 6: Documentation + Release
 **Goal**: A new consumer can adopt playwright-healer in one PR by copying example workflows from the README; the repo has an immutable version tag, a self-test CI workflow, and a SECURITY.md; all prior work is packaged for public consumption
@@ -191,5 +194,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
 | 3.1 First Heal — End-to-End Demo (INSERTED) | 3/3 | Complete | 2026-04-29 |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 3/5 | In progress | - |
-| 5. Auto-Merge | 0/TBD | Not started | - |
+| 5. Auto-Merge | 3/3 | Complete | 2026-05-02 |
 | 6. Documentation + Release | 0/TBD | Not started | - |
