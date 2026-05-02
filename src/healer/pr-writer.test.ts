@@ -23,7 +23,7 @@ vi.mock('@actions/core', () => ({
   warning: vi.fn(),
 }));
 
-import { openHealerPr, renderPrBody } from './pr-writer.js';
+import { openHealerPr, renderPrBody, evaluateAutoMerge, type AutoMergeDecision } from './pr-writer.js';
 import { Octokit } from '@octokit/rest';
 import * as core from '@actions/core';
 
@@ -47,6 +47,11 @@ const mkArgs = (over: any = {}) => ({
   costUsd: 0.1234,
   triggeringRunUrl: 'https://github.com/octocat/repo/actions/runs/123',
   traceLink: null as string | null,
+  // Plan 01 additions — defaults make legacy tests pass unchanged:
+  enableAutoMerge: false,
+  autoMergePassRate: 1.0,
+  autoMergeFixClasses: ['selectors'],
+  patchedFiles: ['tests/checkout.spec.ts'],
   ...over,
 });
 
@@ -308,5 +313,266 @@ describe('pr-writer — WR-02 (Test 4: backwards compat for non-zero total)', ()
     expect(body).toMatch(/9\/10/);
     // Must NOT show the skipped message
     expect(body).not.toMatch(/skipped \(post-fix validation disabled\)/);
+  });
+});
+
+// ── Phase 05: evaluateAutoMerge() pure function tests ───────────────────────
+
+const mkEvalArgs = (over: Partial<Parameters<typeof evaluateAutoMerge>[0]> = {}) => ({
+  validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+  autoMergePassRate: 1.0,
+  fixClass: 'selectors' as const,
+  autoMergeFixClasses: ['selectors'],
+  patchedFiles: ['tests/foo.spec.ts'],
+  ...over,
+});
+
+describe('pr-writer — Phase 05 evaluateAutoMerge — pass_rate condition (D-07)', () => {
+  it('PR1: validation skipped (total=0) → pass_rate blocked, eligible=false', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      validation: { passed: 0, total: 0, passRate: 0, perRun: [] },
+    }));
+    expect(decision.eligible).toBe(false);
+    const cond = decision.conditions.find(c => c.condition === 'pass_rate')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('validation skipped (demo mode)');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('PR2: passRate above threshold → matched, reason contains count and threshold', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      validation: { passed: 10, total: 10, passRate: 1.0, perRun: [] },
+      autoMergePassRate: 1.0,
+    }));
+    const cond = decision.conditions.find(c => c.condition === 'pass_rate')!;
+    expect(cond.result).toBe('matched');
+    expect(cond.reason).toContain('10/10');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('PR3: passRate equal to threshold → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      validation: { passed: 19, total: 20, passRate: 0.95, perRun: [] },
+      autoMergePassRate: 0.95,
+    }));
+    const cond = decision.conditions.find(c => c.condition === 'pass_rate')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('PR4: passRate below threshold → blocked, reason contains percentages', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      validation: { passed: 9, total: 10, passRate: 0.9, perRun: [] },
+      autoMergePassRate: 1.0,
+    }));
+    const cond = decision.conditions.find(c => c.condition === 'pass_rate')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('90%');
+    expect(cond.reason).toContain('100%');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('PR5: passRate 9/10 vs strict 1.0 → blocked', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      validation: { passed: 9, total: 10, passRate: 0.9, perRun: [] },
+      autoMergePassRate: 1.0,
+    }));
+    const cond = decision.conditions.find(c => c.condition === 'pass_rate')!;
+    expect(cond.result).toBe('blocked');
+    expect(decision.eligible).toBe(false);
+    expect(decision.conditions.length).toBe(4);
+  });
+});
+
+describe('pr-writer — Phase 05 evaluateAutoMerge — fix_class condition (MRG-02)', () => {
+  it('FC1: selectors in default allow-list → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ fixClass: 'selectors', autoMergeFixClasses: ['selectors'] }));
+    const cond = decision.conditions.find(c => c.condition === 'fix_class')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('FC2: waits not in default allow-list → blocked, reason contains waits and selectors', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ fixClass: 'waits', autoMergeFixClasses: ['selectors'] }));
+    const cond = decision.conditions.find(c => c.condition === 'fix_class')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('waits');
+    expect(cond.reason).toContain('selectors');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('FC3: extended allow-list [selectors, waits], fixClass=waits → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ fixClass: 'waits', autoMergeFixClasses: ['selectors', 'waits'] }));
+    const cond = decision.conditions.find(c => c.condition === 'fix_class')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('FC4: extended allow-list with all classes, fixClass=slow → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      fixClass: 'slow',
+      autoMergeFixClasses: ['selectors', 'waits', 'assertions', 'slow'],
+    }));
+    const cond = decision.conditions.find(c => c.condition === 'fix_class')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('FC5: empty allow-list → blocked (defensive)', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ fixClass: 'selectors', autoMergeFixClasses: [] }));
+    const cond = decision.conditions.find(c => c.condition === 'fix_class')!;
+    expect(cond.result).toBe('blocked');
+    expect(decision.eligible).toBe(false);
+    expect(decision.conditions.length).toBe(4);
+  });
+});
+
+describe('pr-writer — Phase 05 evaluateAutoMerge — scope condition (D-02 / TEST_PATH_ALLOWLIST re-use)', () => {
+  it('SC1: tests/ file → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['tests/foo.spec.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('SC2: e2e/ file → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['e2e/foo.spec.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('SC3: playwright/ file → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['playwright/foo.spec.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('SC4: monorepo nested tests/ path → matched', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['packages/x/tests/foo.spec.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('SC5: src/ file → blocked, reason names the offending path', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['src/foo.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('src/foo.ts');
+    expect(decision.eligible).toBe(false);
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('SC6: mixed paths — first non-test path wins in reason', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['tests/a.ts', 'src/b.ts', 'src/c.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('src/b.ts');
+    expect(cond.reason).not.toContain('src/c.ts');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('SC7: empty patchedFiles → matched (vacuous)', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: [] }));
+    const cond = decision.conditions.find(c => c.condition === 'scope')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+});
+
+describe('pr-writer — Phase 05 evaluateAutoMerge — config_files condition (D-03 / CONFIG_FILE_DENYLIST)', () => {
+  it('CF1: root playwright.config.ts → blocked', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['playwright.config.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'config_files')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('playwright.config.ts');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('CF2: subdir playwright.config.ts → blocked', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['e2e/playwright.config.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'config_files')!;
+    expect(cond.result).toBe('blocked');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('CF3: root vitest.config.ts → blocked', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['vitest.config.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'config_files')!;
+    expect(cond.result).toBe('blocked');
+    expect(cond.reason).toContain('vitest.config.ts');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('CF4: config file in tests/ subdir → blocked by config_files condition', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['tests/utils.config.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'config_files')!;
+    expect(cond.result).toBe('blocked');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('CF5: normal test file → config_files matched, reason no config', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['tests/foo.spec.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'config_files')!;
+    expect(cond.result).toBe('matched');
+    expect(cond.reason).toContain('no config files patched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('CF6: tests/config.ts (not .config.<ext> pattern) → matched (false-positive guard)', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['tests/config.ts'] }));
+    const cond = decision.conditions.find(c => c.condition === 'config_files')!;
+    expect(cond.result).toBe('matched');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('CF7: .mjs and .cjs extensions → blocked', () => {
+    const d1 = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['playwright.config.mjs'] }));
+    expect(d1.conditions.find(c => c.condition === 'config_files')!.result).toBe('blocked');
+    const d2 = evaluateAutoMerge(mkEvalArgs({ patchedFiles: ['playwright.config.cjs'] }));
+    expect(d2.conditions.find(c => c.condition === 'config_files')!.result).toBe('blocked');
+    expect(d1.conditions.length).toBe(4);
+    expect(d2.conditions.length).toBe(4);
+  });
+});
+
+describe('pr-writer — Phase 05 evaluateAutoMerge — eligible aggregation', () => {
+  it('EA1: all conditions matched → eligible=true', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs());
+    expect(decision.eligible).toBe(true);
+    expect(decision.conditions.every(c => c.result === 'matched')).toBe(true);
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('EA2: one blocked (fix_class) → eligible=false', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({ fixClass: 'waits', autoMergeFixClasses: ['selectors'] }));
+    expect(decision.eligible).toBe(false);
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('EA3: multiple blocked → eligible=false, both show blocked', () => {
+    const decision = evaluateAutoMerge(mkEvalArgs({
+      fixClass: 'waits',
+      autoMergeFixClasses: ['selectors'],
+      patchedFiles: ['src/foo.ts'],
+    }));
+    expect(decision.eligible).toBe(false);
+    expect(decision.conditions.find(c => c.condition === 'fix_class')!.result).toBe('blocked');
+    expect(decision.conditions.find(c => c.condition === 'scope')!.result).toBe('blocked');
+    expect(decision.conditions.length).toBe(4);
+  });
+
+  it('EA4: conditions array always has length 4', () => {
+    const cases = [
+      mkEvalArgs(),
+      mkEvalArgs({ validation: { passed: 0, total: 0, passRate: 0, perRun: [] } }),
+      mkEvalArgs({ patchedFiles: ['src/app.ts'] }),
+      mkEvalArgs({ patchedFiles: ['playwright.config.ts'] }),
+    ];
+    for (const args of cases) {
+      expect(evaluateAutoMerge(args).conditions.length).toBe(4);
+    }
   });
 });
