@@ -16,7 +16,7 @@ inputs:
       (those are PR-creation and runner tokens). For provider=github, pass a
       GitHub PAT with the `models:read` scope (a different PAT than healer_token,
       which needs `repo`). For Ollama localhost it may be empty.
-      Example: api_key: ${{ secrets.GH_MODELS_TOKEN }}  # for provider: github
+      Example: api_key: secrets.GH_MODELS_TOKEN  # for provider: github
     required: false
   healer_token:
     description: 'PAT or GitHub App token required for PR creation and workflow_dispatch'
