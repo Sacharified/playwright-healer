@@ -70,6 +70,99 @@ function isConfigFile(filePath: string): boolean {
   return CONFIG_FILE_DENYLIST.some((re) => re.test(filePath));
 }
 
+export interface EvaluateAutoMergeArgs {
+  validation: ValidationResult;        // from src/healer/validator.ts
+  autoMergePassRate: number;           // 0..1, parsed from config (Plan 01)
+  fixClass: 'selectors' | 'waits' | 'assertions' | 'slow';
+  autoMergeFixClasses: string[];       // already split + trimmed (Plan 01 schema produces string; index.ts splits)
+  patchedFiles: string[];              // from extractPatchedFiles(proposal.diff)
+}
+
+/**
+ * Pure function — produces an AutoMergeDecision over four conditions.
+ * NEVER calls any IO. Ordered: pass_rate, fix_class, scope, config_files.
+ *
+ * eligible iff every condition.result === 'matched'.
+ *
+ * Empty patchedFiles[] is treated as vacuously matched on scope+config_files
+ * (RESEARCH §"Empty patchedFiles[] outcome"). In practice this branch is unreachable
+ * because the gate fires post-pulls.create which only succeeds with a non-empty diff;
+ * the explicit handling is defensive against future call-site changes.
+ */
+export function evaluateAutoMerge(args: EvaluateAutoMergeArgs): AutoMergeDecision {
+  const conditions: AutoMergeCondition[] = [];
+
+  // 1. pass_rate (D-07 — total > 0 AND passRate >= threshold)
+  if (args.validation.total === 0) {
+    conditions.push({ condition: 'pass_rate', result: 'blocked', reason: 'validation skipped (demo mode)' });
+  } else if (args.validation.passRate >= args.autoMergePassRate) {
+    const thresholdStr = args.autoMergePassRate.toString();
+    conditions.push({
+      condition: 'pass_rate',
+      result: 'matched',
+      reason: `${args.validation.passed}/${args.validation.total} passed (≥ ${thresholdStr})`,
+    });
+  } else {
+    const observedPct = (args.validation.passRate * 100).toFixed(0);
+    const thresholdPct = (args.autoMergePassRate * 100).toFixed(0);
+    conditions.push({
+      condition: 'pass_rate',
+      result: 'blocked',
+      reason: `pass rate ${observedPct}% < ${thresholdPct}%`,
+    });
+  }
+
+  // 2. fix_class (MRG-02)
+  if (args.autoMergeFixClasses.includes(args.fixClass)) {
+    conditions.push({
+      condition: 'fix_class',
+      result: 'matched',
+      reason: `${args.fixClass} in allow-list (${args.autoMergeFixClasses.join(', ') || 'empty'})`,
+    });
+  } else {
+    conditions.push({
+      condition: 'fix_class',
+      result: 'blocked',
+      reason: `${args.fixClass} not in allow-list (${args.autoMergeFixClasses.join(', ') || 'empty'})`,
+    });
+  }
+
+  // 3. scope (D-02)
+  const offendingPath = args.patchedFiles.find((p) => !isInTestPath(p));
+  if (offendingPath) {
+    conditions.push({
+      condition: 'scope',
+      result: 'blocked',
+      reason: `files outside test directory (${offendingPath})`,
+    });
+  } else {
+    conditions.push({
+      condition: 'scope',
+      result: 'matched',
+      reason: 'all patched files in tests/, e2e/, or playwright/',
+    });
+  }
+
+  // 4. config_files (D-03)
+  const configHit = args.patchedFiles.find(isConfigFile);
+  if (configHit) {
+    conditions.push({
+      condition: 'config_files',
+      result: 'blocked',
+      reason: `configuration file change (${configHit})`,
+    });
+  } else {
+    conditions.push({
+      condition: 'config_files',
+      result: 'matched',
+      reason: 'no config files patched',
+    });
+  }
+
+  const eligible = conditions.every((c) => c.result === 'matched');
+  return { eligible, conditions };
+}
+
 export interface OpenHealerPrArgs {
   patToken: string;
   owner: string;
