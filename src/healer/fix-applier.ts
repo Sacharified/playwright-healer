@@ -44,10 +44,17 @@ const identityFlags = (): string[] => [
 export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   const branch = `playwright-healer/${args.testSlug}-${args.shortSha}`;
 
+  // Build inline credential flags for fetch (private repos require auth and
+  // actions/checkout was invoked with persist-credentials: false, so the
+  // runner's credential store is empty). Same pattern as the push step below.
+  const fetchAuth = args.token
+    ? ['-c', `http.https://github.com/.extraheader=Authorization: basic ${Buffer.from(`x-access-token:${args.token}`).toString('base64')}`]
+    : [];
+
   // 1. Fetch the default branch (shallow — we only need the tip)
   await exec(
     'git',
-    ['fetch', 'origin', args.defaultBranch, '--depth=50'],
+    [...fetchAuth, 'fetch', 'origin', args.defaultBranch, '--depth=50'],
     { cwd: args.cwd },
   );
 

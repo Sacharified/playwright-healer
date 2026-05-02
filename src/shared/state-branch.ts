@@ -25,6 +25,23 @@ const BOT_NAME = 'playwright-healer-bot';
 const MAX_RETRIES = 5;
 
 /**
+ * Returns inline `git -c http.extraheader=...` flags injecting HEALER_TOKEN as
+ * basic-auth for github.com requests. Same pattern as actions/checkout and
+ * fix-applier.ts CRACK-2 fix — token never lands in ~/.gitconfig or
+ * .git/config; per-invocation argv only. PAT was registered with
+ * core.setSecret upstream so any leaked stderr is masked by the runner.
+ *
+ * Returns [] when HEALER_TOKEN is unset/empty (local dev, file:// remotes, and
+ * public repos all work without auth).
+ */
+function gitCredentialFlags(): string[] {
+  const token = process.env['HEALER_TOKEN'] ?? '';
+  if (!token) return [];
+  const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
+  return ['-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`];
+}
+
+/**
  * Returns the relative NDJSON path for today's date in UTC.
  * Format: "runs/YYYY/MM/DD.ndjson"
  * Exported so integration tests can assert on the exact file path.
@@ -73,7 +90,7 @@ export async function appendHealEvent(
     // 1. Sync to remote state before every attempt
     await getExecOutput(
       'git',
-      ['fetch', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'fetch', 'origin', STATE_BRANCH],
       { cwd: worktreePath },
     );
     await getExecOutput(
@@ -113,6 +130,7 @@ export async function appendHealEvent(
     const push = await getExecOutput(
       'git',
       [
+        ...gitCredentialFlags(),
         'push',
         `--force-with-lease=${STATE_BRANCH}`,
         'origin',
@@ -174,7 +192,7 @@ export async function bootstrapOrGetWorktree(
   // Check whether the state branch already exists on the remote
   const lsRemote = await getExecOutput(
     'git',
-    ['ls-remote', '--exit-code', 'origin', `refs/heads/${STATE_BRANCH}`],
+    [...gitCredentialFlags(), 'ls-remote', '--exit-code', 'origin', `refs/heads/${STATE_BRANCH}`],
     { cwd: primaryCwd, ignoreReturnCode: true },
   );
 
@@ -182,7 +200,7 @@ export async function bootstrapOrGetWorktree(
     // Branch exists — use git worktree add (shares .git with primary workspace)
     await getExecOutput(
       'git',
-      ['fetch', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'fetch', 'origin', STATE_BRANCH],
       { cwd: primaryCwd },
     );
     await getExecOutput(
@@ -239,7 +257,7 @@ export async function bootstrapOrGetWorktree(
     // Push — if a concurrent bootstrapper wins, our push fails (non-zero exit)
     const push = await getExecOutput(
       'git',
-      ['push', '-u', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'push', '-u', 'origin', STATE_BRANCH],
       { cwd: worktreePath, ignoreReturnCode: true },
     );
 
@@ -283,7 +301,7 @@ export async function appendRecord(
     // 1. Sync to remote state before every attempt
     await getExecOutput(
       'git',
-      ['fetch', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'fetch', 'origin', STATE_BRANCH],
       { cwd: worktreePath },
     );
     await getExecOutput(
@@ -323,6 +341,7 @@ export async function appendRecord(
     const push = await getExecOutput(
       'git',
       [
+        ...gitCredentialFlags(),
         'push',
         `--force-with-lease=${STATE_BRANCH}`,
         'origin',
