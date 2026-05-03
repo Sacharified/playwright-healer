@@ -38,7 +38,7 @@ test.describe('checkout flow', () => {
 });
 `;
 
-const TEST_FILE_PATH = 'fixture/tests/broken-selector.spec.ts';
+const TEST_FILE_PATH = 'tests/fixture-app/tests/broken-selector.spec.ts';
 
 describe('normalizeDiff — fix mode 1: placeholder hunk header (gpt-4.1)', () => {
   it('rewrites `@@ ... @@` to a header with computed start line + counts', () => {
@@ -64,7 +64,7 @@ describe('normalizeDiff — fix mode 1: placeholder hunk header (gpt-4.1)', () =
     expect(out).toMatch(/^@@ -10,5 \+10,5 @@$/m);
     expect(out).not.toContain('@@ ... @@');
     // diff --git header is synthesized.
-    expect(out).toMatch(/^diff --git a\/fixture\/tests\/broken-selector\.spec\.ts b\/fixture\/tests\/broken-selector\.spec\.ts$/m);
+    expect(out).toMatch(/^diff --git a\/tests\/fixture-app\/tests\/broken-selector\.spec\.ts b\/tests\/fixture-app\/tests\/broken-selector\.spec\.ts$/m);
   });
 });
 

@@ -21,7 +21,7 @@
 #
 # One-time setup before first run:
 #   npm install
-#   ( cd fixture && npm install && npx playwright install chromium )
+#   ( cd tests/fixture-app && npm install && npx playwright install chromium )
 #
 # Side effects on success: pushes a healer branch and opens a PR on
 # GITHUB_REPOSITORY. Close (don't merge) the PR to keep the broken fixture
@@ -65,9 +65,9 @@ fi
 GITHUB_REPOSITORY_OWNER="${GITHUB_REPOSITORY%%/*}"
 
 # ── Validate fixture deps ────────────────────────────────────────────────
-if [ ! -d fixture/node_modules ]; then
-  echo "fixture/node_modules missing. Run:" >&2
-  echo "  ( cd fixture && npm install && npx playwright install chromium )" >&2
+if [ ! -d tests/fixture-app/node_modules ]; then
+  echo "tests/fixture-app/node_modules missing. Run:" >&2
+  echo "  ( cd tests/fixture-app && npm install && npx playwright install chromium )" >&2
   exit 1
 fi
 if [ ! -d node_modules ]; then
@@ -77,7 +77,7 @@ fi
 
 # ── Boot fixture server ──────────────────────────────────────────────────
 FIXTURE_PORT="${FIXTURE_PORT:-8080}"
-( cd fixture && exec npx http-server -p "$FIXTURE_PORT" -c-1 -s ) &
+( cd tests/fixture-app && exec npx http-server -p "$FIXTURE_PORT" -c-1 -s ) &
 FIXTURE_PID=$!
 
 EVENT_JSON=$(mktemp -t heal-event.XXXXXX.json)
@@ -105,7 +105,7 @@ REPO_NAME="${GITHUB_REPOSITORY##*/}"
 cat > "$EVENT_JSON" <<EOF
 {
   "inputs": {
-    "testFile": "fixture/tests/broken-selector.spec.ts",
+    "testFile": "tests/fixture-app/tests/broken-selector.spec.ts",
     "testTitle": "clicks submit button and sees confirmation",
     "fixClassHint": "selectors",
     "commitSha": "$HEAD_SHA"
@@ -129,7 +129,7 @@ export INPUT_API_KEY="$INFERENCE_API_KEY"
 export INPUT_HEALER_TOKEN="$HEALER_PAT"
 export INPUT_GITHUB_TOKEN="$HEALER_PAT"
 export INPUT_BASE_URL="http://localhost:$FIXTURE_PORT"
-export INPUT_TEST_COMMAND="cd fixture && npx playwright test"
+export INPUT_TEST_COMMAND="cd tests/fixture-app && npx playwright test"
 export INPUT_MAX_BUDGET_USD=1.00
 export INPUT_MAX_TURNS=10
 export INPUT_SKIP_DETERMINISTIC_CHECK=true

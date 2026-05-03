@@ -67,8 +67,8 @@ describe('forbidden-patterns — D-17 single source of truth', () => {
     expect(TEST_PATH_ALLOWLIST.some((re) => re.test('src/foo.ts'))).toBe(false);
   });
 
-  it('TEST_PATH_ALLOWLIST matches nested fixture/tests/ paths (in-repo self-test fixture)', () => {
-    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('fixture/tests/broken-selector.spec.ts'))).toBe(true);
+  it('TEST_PATH_ALLOWLIST matches nested tests/fixture-app/tests/ paths (in-repo self-test fixture)', () => {
+    expect(TEST_PATH_ALLOWLIST.some((re) => re.test('tests/fixture-app/tests/broken-selector.spec.ts'))).toBe(true);
   });
 
   it('TEST_PATH_ALLOWLIST matches nested monorepo packages/foo/tests/ paths', () => {

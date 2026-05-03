@@ -6,7 +6,7 @@ name: E2E Self-Heal
 # Pre-flight (once, before first dispatch):
 #   - Add `GEMINI_API_KEY` and `HEALER_PAT` (PAT with `repo` scope) to repo
 #     secrets at /settings/secrets/actions
-#   - Confirm `fixture/tests/broken-selector.spec.ts` is in its broken form
+#   - Confirm `tests/fixture-app/tests/broken-selector.spec.ts` is in its broken form
 #     (locator '#wrong-id'). If a previous heal PR was merged, revert it first.
 #
 # What this workflow proves end-to-end:
@@ -22,7 +22,7 @@ on:
       testFile:
         description: 'Test file path (relative to repo root)'
         required: false
-        default: 'fixture/tests/broken-selector.spec.ts'
+        default: 'tests/fixture-app/tests/broken-selector.spec.ts'
       testTitle:
         description: 'Test title (matches a Playwright test() name)'
         required: false
@@ -81,13 +81,13 @@ jobs:
           node-version: '24'
 
       - name: Install fixture deps
-        working-directory: fixture
+        working-directory: tests/fixture-app
         run: |
           npm install
           npx playwright install chromium --with-deps
 
       - name: Start fixture server
-        working-directory: fixture
+        working-directory: tests/fixture-app
         run: |
           npm run start &
           echo $! > /tmp/fixture-pid
@@ -101,7 +101,7 @@ jobs:
           done
 
       - name: Run broken test (must FAIL)
-        working-directory: fixture
+        working-directory: tests/fixture-app
         env:
           BASE_URL: http://localhost:8080
         run: |
@@ -110,7 +110,7 @@ jobs:
           EXIT=$?
           set -e
           if [ "$EXIT" -eq 0 ]; then
-            echo "::error::Fixture test passed unexpectedly. Either the test is no longer broken (a heal PR was merged?) or the fixture is misconfigured. Revert fixture/tests/broken-selector.spec.ts to its broken form."
+            echo "::error::Fixture test passed unexpectedly. Either the test is no longer broken (a heal PR was merged?) or the fixture is misconfigured. Revert tests/fixture-app/tests/broken-selector.spec.ts to its broken form."
             exit 1
           fi
           echo "Test failed as expected (exit $EXIT) — broken state confirmed."
@@ -159,9 +159,9 @@ jobs:
           healer_token: ${{ secrets.HEALER_PAT }}
           commit_sha: ${{ steps.resolve.outputs.sha }}
           base_url: http://localhost:8080
-          setup_command: 'cd fixture && npm install && npx playwright install chromium'
-          start_command: 'cd fixture && npm run start'
-          test_command: 'cd fixture && npx playwright test'
+          setup_command: 'cd tests/fixture-app && npm install && npx playwright install chromium'
+          start_command: 'cd tests/fixture-app && npm run start'
+          test_command: 'cd tests/fixture-app && npx playwright test'
           max_budget_usd: '1.00'
           max_turns: '10'
           # Demo-mode flags inherited from Phase 03.1 — UPDATED Phase 04:
