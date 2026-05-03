@@ -30,6 +30,10 @@ jobs:
             ':(exclude).planning/' \
             ':(exclude)CLAUDE.md' \
             ':(exclude)README.md' \
+            ':(exclude)CHANGELOG.md' \
+            ':(exclude)SECURITY.md' \
+            ':(exclude)CONTRIBUTING.md' \
+            ':(exclude)docs/' \
             ':(exclude).github/workflows/security-lint.yml' \
             ':(exclude)src/shared/security-contract.ts' \
             || true)
