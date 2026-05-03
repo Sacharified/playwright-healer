@@ -1,0 +1,115 @@
+# Dogfood ingest — runs the action's own ingest pipeline against this repo's
+# vitest test results on every push to main and matching PR. Validates that
+# the ingest pipeline still works against a real codebase as we evolve it.
+# enable_auto_dispatch is hardcoded false here — we never want this dogfood
+# workflow to dispatch a heal against the healer itself.
+#
+# NOTE: The ingest pipeline (src/ingest/report-parser.ts) expects Playwright
+# JSON format (suites/config/stats shape). This repo's test suite uses vitest,
+# which emits a different JSON format. A vitest→Playwright adapter is a v0.1.1
+# follow-up item. Until then, the ingest step exits with a core.warning if no
+# Playwright-shaped report is present — this is not a failure, it is the
+# documented no-op skeleton behavior described in CONTEXT.md §D-09.
+
+name: Dogfood Ingest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'vitest.config.*'
+      - '.github/workflows/ingest.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'vitest.config.*'
+      - '.github/workflows/ingest.yml'
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    name: Run ingest pipeline (dogfood)
+    runs-on: ubuntu-latest
+    # SEC-05: Actor guard uses 'playwright-healer-bot' (not 'github-actions[bot]').
+    # Healer PRs are opened using HEALER_PAT, which carries the PAT owner's identity.
+    # BOT_NAME in src/shared/loop-guard.ts is the canonical source for this value.
+    if: >-
+      !contains(github.event.head_commit.message, '[skip-healer]') &&
+      github.actor != 'playwright-healer-bot'
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified at execution
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # Phase 2 state-branch operations need full history
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: '24'
+
+      - name: Install action dependencies
+        run: npm ci
+
+      - name: Run vitest suite
+        # Run this repo's vitest test suite. The results are emitted in vitest
+        # JSON format (not Playwright JSON). The ingest pipeline below will
+        # detect the format mismatch and exit with a warning (no-op skeleton).
+        # v0.1.1 follow-up: add a vitest→Playwright JSON adapter here.
+        run: |
+          set +e
+          npx vitest run --reporter=json --outputFile=test-results/vitest-results.json 2>/dev/null
+          VITEST_EXIT=$?
+          set -e
+          # vitest exits non-zero on test failures — that is expected in CI.
+          # We proceed regardless; ingest is observational, not a test gate.
+          echo "vitest exit code: $VITEST_EXIT (non-zero = test failures present; expected for dogfood)"
+          echo "vitest_exit=$VITEST_EXIT" >> "$GITHUB_OUTPUT"
+        id: run-vitest
+
+      - name: Check for Playwright-shaped report
+        id: check-report
+        run: |
+          # The ingest pipeline expects Playwright JSON (suites/config/stats).
+          # Vitest emits a different shape. Check whether a Playwright report
+          # exists (e.g. from a prior step or upload-artifact). If not, skip.
+          if [ -f "test-results/results.json" ]; then
+            # Minimal shape check: must have a "suites" key
+            if node -e "const r=require('./test-results/results.json'); process.exit(Array.isArray(r.suites)?0:1)" 2>/dev/null; then
+              echo "report_available=true" >> "$GITHUB_OUTPUT"
+              echo "Playwright JSON report found — ingest will run."
+            else
+              echo "report_available=false" >> "$GITHUB_OUTPUT"
+              echo "File test-results/results.json exists but is not Playwright JSON shape — ingest will skip."
+            fi
+          else
+            echo "report_available=false" >> "$GITHUB_OUTPUT"
+            echo "No Playwright JSON report at test-results/results.json — ingest will skip."
+          fi
+
+      - name: Run playwright-healer ingest (dogfood)
+        if: steps.check-report.outputs.report_available == 'true'
+        uses: ./
+        with:
+          mode: ingest
+          report_path: 'test-results/results.json'
+          flake_rate_threshold: '0.2'
+          flake_window_days: '7'
+          slow_regression_pct: '1.5'
+          retention_days: '90'
+          enable_auto_dispatch: 'false'  # HARDCODED — never dispatch heals against the healer itself
+          healer_token: ${{ secrets.HEALER_PAT }}
+
+      - name: Skip ingest (no Playwright report)
+        if: steps.check-report.outputs.report_available != 'true'
+        run: |
+          echo "::warning::Dogfood ingest skipped: no Playwright-shaped JSON report available."
+          echo "::warning::This repo uses vitest (not Playwright) for its own test suite."
+          echo "::warning::A vitest→Playwright JSON adapter is a v0.1.1 follow-up item."
+          echo "::warning::To wire this fully: generate a Playwright-compatible report and pass it to report_path."
+          echo "Ingest no-op skeleton completed — CONTEXT.md §D-09 file hierarchy requirement satisfied."
