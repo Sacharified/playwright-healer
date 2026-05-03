@@ -21,11 +21,13 @@ import { TEST_PATH_ALLOWLIST } from './forbidden-patterns.js';
 // legitimately patches playwright.config.ts for a waits-class issue should still
 // open a PR for human review; only the auto-merge path is forbidden).
 //
-// Two regexes evaluated separately so the reasoning band can name the matched
-// pattern. Extension alternation is constrained to `(ts|js|mjs|cjs)` to prevent
-// false positives on unrelated dot-suffixed names (e.g., `playwright.config.foo`).
+// Single regex catches any `*.config.{ts,js,mjs,cjs}` — including the most common
+// `playwright.config.*` case (Pattern 1 was technically subsumed by Pattern 2, so
+// it has been removed). Extension alternation is constrained to `(ts|js|mjs|cjs)`
+// to prevent false positives on unrelated dot-suffixed names (e.g.,
+// `playwright.config.foo`). `isConfigFile()` returns a boolean; the reasoning band
+// names the matched file via the caller (line ~151), not which regex matched.
 const CONFIG_FILE_DENYLIST = Object.freeze([
-  /(?:^|\/)playwright\.config\.(?:ts|js|mjs|cjs)$/,
   /(?:^|\/)[^/]+\.config\.(?:ts|js|mjs|cjs)$/,
 ] as const);
 
