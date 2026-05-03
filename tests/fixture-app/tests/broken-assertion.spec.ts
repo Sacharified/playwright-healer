@@ -16,7 +16,7 @@
 import { test, expect } from '@playwright/test';
 
 test('clicks submit button and sees assertion confirmation', async ({ page }) => {
-  // BASE_URL is set by the e2e-heal-self.yml workflow; default for local dev
+  // BASE_URL is set by the self-test.yml workflow; default for local dev
   await page.goto(process.env.BASE_URL ?? 'http://localhost:8080');
 
   // Selector RESOLVES correctly — button has text "Submit" per tests/fixture-app/index.html:9.

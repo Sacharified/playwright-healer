@@ -2,7 +2,7 @@
 # scripts/trigger-heal-local.sh
 #
 # Drive the action's heal flow locally — same code path as
-# .github/workflows/e2e-heal-self.yml but without GitHub Actions in the loop.
+# .github/workflows/self-test.yml but without GitHub Actions in the loop.
 # Useful for fast iteration on src/healer/* and src/shared/*.
 #
 # Required env (caller exports):
