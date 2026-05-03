@@ -1,0 +1,78 @@
+# playwright-healer / heal (Gemini 2.5 Flash)
+#
+# Copy this file into your repo as .github/workflows/playwright-healer.yml
+# (or any name — update healer_workflow_file in your ingest step to match).
+#
+# This workflow is dispatched automatically by playwright-healer's ingest
+# step when a flake-rate or slow-regression threshold is breached. You can
+# also trigger it manually from the Actions tab for ad-hoc healing.
+#
+# Gemini 2.5 Flash is the recommended default provider:
+#   - 1M token context window handles large test suites
+#   - Free tier via Google AI Studio (no billing setup needed for low volumes)
+#   - Proven selector-heal quality from Phase 03.1 end-to-end demo
+#
+# Required secrets:
+#   GEMINI_API_KEY — Google AI Studio API key (https://aistudio.google.com/apikey)
+#   HEALER_PAT     — GitHub PAT with repo scope (classic) or
+#                    Contents:write + Pull requests:write + Issues:write (fine-grained)
+
+name: playwright-healer / heal
+
+on:
+  workflow_dispatch:
+    inputs:
+      testFile:
+        description: 'Test file path (relative to repo root)'
+        required: false
+        default: ''
+      testTitle:
+        description: 'Test title to heal'
+        required: false
+        default: ''
+      fixClassHint:
+        description: 'Fix class hint: selectors | waits | assertions | slow'
+        required: false
+        default: ''
+      concurrencyKey:
+        description: 'Concurrency key (set automatically by ingest dispatch)'
+        required: false
+        default: 'manual-dispatch'
+      enable_auto_merge:
+        description: 'Enable auto-merge gate for this heal run'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: playwright-healer-${{ github.repository }}-${{ github.event.inputs.concurrencyKey || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  heal:
+    name: Heal broken test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified at execution
+        with:
+          persist-credentials: false
+
+      - name: Run playwright-healer (heal mode)
+        uses: Sacharified/playwright-healer@v1
+        with:
+          mode: heal
+          provider: gemini
+          model: gemini-2.5-flash
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          healer_token: ${{ secrets.HEALER_PAT }}
+          commit_sha: ${{ inputs.commitSha || github.sha }}
+          base_url: http://localhost:3000            # replace with your app URL
+          setup_command: 'npm ci'                    # replace with your app setup command
+          start_command: 'npm start'                 # replace with your app start command
+          test_command: 'npx playwright test ${{ inputs.testFile }}'
+          max_budget_usd: '2.00'
+          max_turns: '15'
+          enable_auto_merge: ${{ inputs.enable_auto_merge || 'false' }}
