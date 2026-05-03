@@ -25,7 +25,7 @@ vi.mock('@actions/core', () => ({
   warning: vi.fn(),
 }));
 
-import { openHealerPr, renderPrBody, evaluateAutoMerge, enableAutoMerge, renderAutoMergeBand, type AutoMergeDecision } from './pr-writer.js';
+import { openHealerPr, renderPrBody, evaluateAutoMerge, enableAutoMerge, renderAutoMergeBand, extractPatchedFiles, type AutoMergeDecision } from './pr-writer.js';
 import { Octokit } from '@octokit/rest';
 import * as core from '@actions/core';
 import { GraphqlResponseError } from '@octokit/graphql';
@@ -934,5 +934,129 @@ describe('pr-writer — Phase 05 openHealerPr integration — gate fires post-cr
     );
     const summaryCall = vi.mocked(core.summary.addRaw).mock.calls[0][0] as string;
     expect(summaryCall).toContain('PR creation succeeded but node_id missing');
+  });
+});
+
+// ── IN-01: extractPatchedFiles() direct unit tests ───────────────────────────
+//
+// Limitation note: git's quoted-path format (`+++ "b/path"`) — emitted when
+// core.quotepath=true and the filename contains non-ASCII or special characters —
+// is NOT matched by the current regex. Such paths return [] (silently dropped).
+// In practice, bot-authored test-path diffs will not contain non-ASCII filenames,
+// and diff-lint upstream already enforces the same allowlist, so the gate still
+// fails safe. The QP test below captures current (intentional) behavior so that
+// any future change to support quoted paths is explicit and deliberate.
+
+describe('extractPatchedFiles — standard cases', () => {
+  it('EPF1: single-hunk diff returns the patched file path', () => {
+    const diff = [
+      'diff --git a/tests/foo.spec.ts b/tests/foo.spec.ts',
+      'index abc..def 100644',
+      '--- a/tests/foo.spec.ts',
+      '+++ b/tests/foo.spec.ts',
+      '@@ -1,3 +1,3 @@',
+      '-old line',
+      '+new line',
+    ].join('\n');
+    expect(extractPatchedFiles(diff)).toEqual(['tests/foo.spec.ts']);
+  });
+
+  it('EPF2: multi-hunk diff (two +++ b/ headers) returns both paths', () => {
+    const diff = [
+      'diff --git a/tests/a.spec.ts b/tests/a.spec.ts',
+      '--- a/tests/a.spec.ts',
+      '+++ b/tests/a.spec.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+      'diff --git a/tests/b.spec.ts b/tests/b.spec.ts',
+      '--- a/tests/b.spec.ts',
+      '+++ b/tests/b.spec.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n');
+    expect(extractPatchedFiles(diff)).toEqual(['tests/a.spec.ts', 'tests/b.spec.ts']);
+  });
+
+  it('EPF3: rename diff — only the new path (b/) is extracted', () => {
+    const diff = [
+      'diff --git a/tests/old.spec.ts b/tests/new.spec.ts',
+      'similarity index 90%',
+      'rename from tests/old.spec.ts',
+      'rename to tests/new.spec.ts',
+      '--- a/tests/old.spec.ts',
+      '+++ b/tests/new.spec.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n');
+    // The --- line is not a +++ header, so only the b/ path is extracted
+    expect(extractPatchedFiles(diff)).toEqual(['tests/new.spec.ts']);
+  });
+
+  it('EPF4: deletion (+++ /dev/null) is excluded', () => {
+    const diff = [
+      'diff --git a/tests/gone.spec.ts b/tests/gone.spec.ts',
+      'deleted file mode 100644',
+      '--- a/tests/gone.spec.ts',
+      '+++ /dev/null',
+      '@@ -1 +0,0 @@',
+      '-deleted line',
+    ].join('\n');
+    expect(extractPatchedFiles(diff)).toEqual([]);
+  });
+
+  it('EPF5: no-newline-at-eof marker does not affect +++ parsing', () => {
+    const diff = [
+      '--- a/tests/foo.spec.ts',
+      '+++ b/tests/foo.spec.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+      '\\ No newline at end of file',
+    ].join('\n');
+    expect(extractPatchedFiles(diff)).toEqual(['tests/foo.spec.ts']);
+  });
+
+  it('EPF6: Windows CRLF line endings are handled (trailing \\r trimmed by \\s*$)', () => {
+    const diff = [
+      '--- a/tests/foo.spec.ts\r',
+      '+++ b/tests/foo.spec.ts\r',
+      '@@ -1 +1 @@\r',
+      '-old\r',
+      '+new\r',
+    ].join('\n');
+    expect(extractPatchedFiles(diff)).toEqual(['tests/foo.spec.ts']);
+  });
+
+  it('EPF7: empty diff string returns []', () => {
+    expect(extractPatchedFiles('')).toEqual([]);
+  });
+
+  it('EPF8: diff with no +++ b/ headers returns []', () => {
+    const diff = [
+      'diff --git a/tests/foo.spec.ts b/tests/foo.spec.ts',
+      'Binary files differ',
+    ].join('\n');
+    expect(extractPatchedFiles(diff)).toEqual([]);
+  });
+});
+
+describe('extractPatchedFiles — quoted-path limitation (EPF-QP)', () => {
+  it('EPF-QP: git quoted-path format (+++ "b/path") returns [] — current behavior captured', () => {
+    // git emits quoted paths when core.quotepath=true and filename has non-ASCII chars.
+    // The current regex requires +++ b/<path> (no quotes); quoted form is not matched.
+    // This test documents the limitation so future changes are explicit.
+    const diff = [
+      'diff --git "a/tests/fôo.spec.ts" "b/tests/fôo.spec.ts"',
+      '--- "a/tests/fôo.spec.ts"',
+      '+++ "b/tests/fôo.spec.ts"',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n');
+    // Current behavior: returns [] because the regex expects +++ b/<path> (unquoted)
+    expect(extractPatchedFiles(diff)).toEqual([]);
   });
 });
