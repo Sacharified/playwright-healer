@@ -1,67 +1,63 @@
 ---
 phase: 05-auto-merge
-fixed_at: 2026-05-02T00:00:00Z
+fixed_at: 2026-05-02T09:01:55Z
 review_path: .planning/phases/05-auto-merge/05-REVIEW.md
 iteration: 1
-findings_in_scope: 0
-fixed: 0
+findings_in_scope: 3
+fixed: 3
 skipped: 0
 status: all_fixed
 ---
 
 # Phase 05: Code Review Fix Report
 
-**Fixed at:** 2026-05-02
+**Fixed at:** 2026-05-02T09:01:55Z
 **Source review:** .planning/phases/05-auto-merge/05-REVIEW.md
 **Iteration:** 1
 
 **Summary:**
-- Fix scope: `critical_warning` (CR-* and WR-* findings only)
-- Findings in scope: 0
-- Fixed: 0
+- Findings in scope: 3
+- Fixed: 3
 - Skipped: 0
 
 ## Fixed Issues
 
-None — no critical or warning findings were present in the review. The review contains 3 INFO findings (IN-01, IN-02, IN-03) which fall outside the `critical_warning` scope and were not addressed.
+### IN-02: CONFIG_FILE_DENYLIST pattern 1 subsumed by pattern 2; inaccurate comment
 
-## Info Findings Not Addressed (scope: critical_warning)
-
-The following 3 informational findings were identified by the reviewer but are excluded from this fix run because `fix_scope` is set to `critical_warning`. None affect correctness for committed use-cases.
-
-### IN-01: `extractPatchedFiles` has no direct unit tests; quoted-path diffs silently yield empty list
-
-**File:** `src/healer/pr-writer.ts:53-64`
-**Reason not fixed:** INFO severity is outside `critical_warning` scope.
-**Original issue:** `extractPatchedFiles` has zero direct unit tests. The regex also silently drops `+++ "b/path"` (git quoted-path format), causing non-ASCII-named config files to pass both scope and config_files conditions via an empty `patchedFiles` list. Behavior fails safe in practice (diff-lint upstream enforces the same allowlist), but the comment implies different behavior.
-
-### IN-02: CONFIG_FILE_DENYLIST pattern 1 is fully subsumed by pattern 2; comment is inaccurate
-
-**File:** `src/healer/pr-writer.ts:27-30`
-**Reason not fixed:** INFO severity is outside `critical_warning` scope.
-**Original issue:** The module-level comment claims two regexes exist so the reasoning band can name the matched pattern, but `isConfigFile()` only returns a `boolean` and never exposes which pattern matched. Pattern 1 is also a strict subset of pattern 2 — it is never independently decisive. The comment is misleading; the practical behavior is correct.
-
-### IN-03: `renderAutoMergeBand` defensive `unknown` branch reachable via empty-string `enabledAt`
-
-**File:** `src/healer/pr-writer.ts:261-263`
-**Reason not fixed:** INFO severity is outside `critical_warning` scope.
-**Original issue:** If `enableAutoMerge` returns `{ enabledAt: '' }` (empty string, falsy), the success branch does not fire and the outcome row reads `unknown / gate state inconsistent`. The type is `string` (not `string | null`) so this is unexpected from the live API but possible through test mocking. The defensive branch is correct; the test suite does not cover it.
-
-## To Address Info Findings
-
-Re-run the fixer with `fix_scope: all` to include INFO findings in the next iteration:
-
-```
-/gsd-code-review-fix --all
-```
-
-Or address the findings manually:
-- **IN-01**: Add `describe('extractPatchedFiles')` tests in `src/healer/pr-writer.test.ts`; optionally document the quoted-path limitation in the JSDoc comment at line 46.
-- **IN-02**: Update the comment at lines 24-26 of `src/healer/pr-writer.ts` to accurately describe the subsumption relationship.
-- **IN-03**: Strengthen the success check from `enableResult?.enabledAt` to `enableResult?.enabledAt != null`, or add a JSDoc comment documenting the defensive branch is unreachable in practice.
+**Files modified:** `src/healer/pr-writer.ts`
+**Commit:** 122dc31
+**Applied fix:** Removed Pattern 1 (`/(?:^|\/)playwright\.config\.(?:ts|js|mjs|cjs)$/`) from `CONFIG_FILE_DENYLIST` since it is fully subsumed by Pattern 2 (`/(?:^|\/)[^/]+\.config\.(?:ts|js|mjs|cjs)$/`). Updated the block comment to drop the inaccurate claim that "two regexes are evaluated separately so the reasoning band can name the matched pattern" — `isConfigFile()` returns a `boolean` and does not expose which regex matched. The new comment correctly explains that Pattern 1 was technically subsumed and has been removed. All 79 existing config-file tests (CF1-CF7) continued to pass.
 
 ---
 
-_Fixed: 2026-05-02_
+### IN-03: `renderAutoMergeBand` `unknown` branch reachable on empty-string `enabledAt`
+
+**Files modified:** `src/healer/pr-writer.ts`
+**Commit:** 1e49e6c
+**Applied fix:** Replaced the falsy check `enableResult?.enabledAt` with the explicit `enableResult?.enabledAt !== undefined` on the success branch. This ensures that `enabledAt: ''` (empty string, falsy but a valid typed string) correctly routes to the success row rather than falling through to the `unknown` defensive branch. Updated the `else` comment to read: "Unreachable in practice: enableAutoMerge always returns either { enabledAt: <ISO-string> } on success or { errorMessage: <string> } on failure. Defensive for type-narrowing completeness only." Existing RB5 test (populated-`enabledAt` path) continued to pass.
+
+---
+
+### IN-01: `extractPatchedFiles` has no direct unit tests; quoted-path silently yields empty list
+
+**Files modified:** `src/healer/pr-writer.test.ts`
+**Commit:** f27cece
+**Applied fix:** Added `extractPatchedFiles` to the import in `pr-writer.test.ts`. Added two new `describe` blocks covering all reviewer-requested edge cases:
+
+- `EPF1` — standard single-hunk diff extracts the correct path
+- `EPF2` — multi-hunk diff (two `+++ b/` headers) returns both paths
+- `EPF3` — rename diff extracts only the `b/` (new) path, not the `a/` (old) path
+- `EPF4` — deletion (`+++ /dev/null`) is excluded from the result list
+- `EPF5` — no-newline-at-eof marker does not affect `+++` parsing
+- `EPF6` — Windows CRLF line endings are handled by the `\s*$` trailing trim
+- `EPF7` — empty diff string returns `[]`
+- `EPF8` — diff with no `+++ b/` headers returns `[]`
+- `EPF-QP` — git quoted-path format (`+++ "b/path"`) returns `[]`, documenting the limitation as intentional: bot-authored test-path diffs do not contain non-ASCII filenames, and diff-lint upstream enforces the same allowlist, so the gate still fails safe. No parser change was made.
+
+Test count grew from 79 to 88. All 88 pass.
+
+---
+
+_Fixed: 2026-05-02T09:01:55Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
