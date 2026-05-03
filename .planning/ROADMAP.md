@@ -177,7 +177,15 @@ Plans:
   2. The README sequence diagram correctly describes the two-workflow architecture (ingest on every CI push, healer dispatched separately) and documents why `GITHUB_TOKEN` alone is insufficient for PR creation
   3. Pushing to main in the playwright-healer repo triggers a self-test CI workflow that exercises the action against a fixture Playwright repo on `ubuntu-latest` and passes
   4. The repo has at least one immutable version tag (`v0.1.0`) that consumers can pin in `uses:`, and the tag points to a commit where `npm ci --production` correctly installs the Claude Agent SDK native binary on `ubuntu-latest`
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Security pre-flight: .gitleaks.toml allowlist + gitleaks scan + SECURITY.md + CONTRIBUTING.md (PKG-03, DOC-05) — Wave 1
+- [ ] 06-02-PLAN.md — Fixture rename: fixture/ → tests/fixture-app/ + all in-repo + cross-repo reference updates (PKG-04) — Wave 1
+- [ ] 06-03-PLAN.md — Core docs: README (11 sections + Mermaid diagram) + CHANGELOG [Unreleased] + security-lint.yml exclusion update (PKG-05, DOC-01, DOC-03, DOC-04, DOC-05) — Wave 2
+- [ ] 06-04-PLAN.md — docs/ companion files: auto-merge.md + release-process.md + examples/gemini.yml + examples/github-models.yml + examples/ingest.yml (PKG-05, DOC-02) — Wave 2
+- [ ] 06-05-PLAN.md — Self-test promotion: e2e-heal-self.yml → self-test.yml with push/PR/dispatch triggers + playwright-healer-bot actor guard (PKG-04) — Wave 3
+- [ ] 06-06-PLAN.md — Release: pre-flight checklist + CHANGELOG [Unreleased]→[0.1.0] + repo visibility flip CHECKPOINT + v0.1.0 tag + v1 alias + GitHub Release (PKG-03, DOC-05) — Wave 4
 
 ## Progress
 
@@ -195,4 +203,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3.1 First Heal — End-to-End Demo (INSERTED) | 3/3 | Complete | 2026-04-29 |
 | 4. Auto-Dispatch + Full Fix Classes + Deduplication | 3/5 | In progress | - |
 | 5. Auto-Merge | 3/3 | Complete | 2026-05-02 |
-| 6. Documentation + Release | 0/TBD | Not started | - |
+| 6. Documentation + Release | 0/6 | Planned | - |
