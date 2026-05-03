@@ -257,10 +257,12 @@ export function renderAutoMergeBand(
     outcomeRow = `| auto_merge | blocked | one or more conditions failed |`;
   } else if (enableResult?.errorMessage) {
     outcomeRow = `| auto_merge | blocked | ${enableResult.errorMessage} — see README §auto-merge-prerequisites |`;
-  } else if (enableResult?.enabledAt) {
+  } else if (enableResult?.enabledAt !== undefined) {
     outcomeRow = `| auto_merge | enabled | mutation succeeded at ${enableResult.enabledAt} |`;
   } else {
-    // Defensive — shouldn't reach here in normal flow
+    // Unreachable in practice: enableAutoMerge always returns either
+    // { enabledAt: <ISO-string> } on success or { errorMessage: <string> } on failure.
+    // Defensive for type-narrowing completeness only.
     outcomeRow = `| auto_merge | unknown | gate state inconsistent |`;
   }
 
