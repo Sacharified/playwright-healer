@@ -86,4 +86,43 @@ describe('action.yml structure (Phase 01.3 SC#1 bridge)', () => {
     const ids = yml.runs.steps.map((s) => s.id).filter(Boolean);
     expect(ids).toContain(slugInValue);
   });
+
+  // Wiring guard: every input that's plumbed via an INPUT_* env mapping
+  // (i.e., `INPUT_FOO: ${{ inputs.foo }}` in the run step's env block) MUST
+  // be read by core.getInput() in src/index.ts. The Phase 04/05 inputs
+  // (enable_auto_dispatch, healer_workflow_file, enable_auto_merge, …)
+  // shipped with the env mapping but no getInput call — the schema's
+  // `.default('false')` masked the omission and consumers saw
+  // "Detection mode: log-only" no matter what they configured.
+  //
+  // Inputs consumed directly by composite-action steps (e.g. `commit_sha`
+  // in the heal-mode checkout `with: ref:`) don't need a getInput call;
+  // they're filtered out by checking the action.yml text for `${{ inputs.X }}`
+  // outside the env block.
+  it('every input wired through INPUT_* env mapping is read via core.getInput() in src/index.ts', () => {
+    const ymlRaw = readFileSync(ACTION_YML_PATH, 'utf8');
+    const indexSrc = readFileSync(
+      resolve(__dirname, '../../src/index.ts'),
+      'utf8',
+    );
+
+    // Pull out every "INPUT_FOO: ${{ inputs.foo }}" mapping from action.yml.
+    const envMappingRegex = /INPUT_[A-Z0-9_]+:\s*\$\{\{\s*inputs\.([a-z0-9_]+)\s*\}\}/g;
+    const envMappedInputs = new Set<string>();
+    for (const m of ymlRaw.matchAll(envMappingRegex)) {
+      envMappedInputs.add(m[1]);
+    }
+    expect(envMappedInputs.size).toBeGreaterThan(0); // sanity: regex actually matched
+
+    const missing = [...envMappedInputs].filter((name) => {
+      const single = `core.getInput('${name}'`;
+      const double = `core.getInput("${name}"`;
+      return !indexSrc.includes(single) && !indexSrc.includes(double);
+    });
+
+    expect(
+      missing,
+      `inputs with INPUT_* env mapping in action.yml but no core.getInput call in src/index.ts: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
 });

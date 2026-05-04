@@ -78,6 +78,13 @@ async function main(): Promise<void> {
     skipDeterministicCheck: core.getInput('skip_deterministic_check'),
     skipPostFixValidation:  core.getInput('skip_post_fix_validation'),
     skipDiffLint:           core.getInput('skip_diff_lint'),
+    // ── Phase 04: auto-dispatch + workflow file ──
+    enableAutoDispatch:     core.getInput('enable_auto_dispatch'),
+    healerWorkflowFile:     core.getInput('healer_workflow_file'),
+    // ── Phase 05: auto-merge ──
+    enableAutoMerge:        core.getInput('enable_auto_merge'),
+    autoMergePassRate:      core.getInput('auto_merge_pass_rate'),
+    autoMergeFixClasses:    core.getInput('auto_merge_fix_classes'),
   };
 
   // ── Phase B': YAML MERGE (CFG-06/CFG-07; load-bearing for SC#4) ─────────
