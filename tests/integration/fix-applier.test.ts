@@ -109,6 +109,33 @@ describe('applyFix — FIX-05 / PRI-06 / SC-5', () => {
     expect(authorName).toBe('playwright-healer-bot');
   });
 
+  // Vercel/Netlify deploy gates verify commit-author → GitHub-account mapping.
+  // The default playwright-healer-bot@users.noreply.github.com doesn't map to
+  // any account, so consumers can override via bot_email / bot_name inputs
+  // (config.botEmail / config.botName threaded through to applyFix).
+  it('uses args.botEmail / args.botName when supplied (deploy-gate compatibility)', async () => {
+    const result = await applyFix({
+      diff: validDiff,
+      defaultBranch: 'main',
+      testSlug: 'X',
+      shortSha: 'abc1234',
+      cwd: ctx.primaryWs1,
+      token: '',
+      botEmail: '41898282+github-actions[bot]@users.noreply.github.com',
+      botName: 'github-actions[bot]',
+    });
+    const authorEmail = execSync(
+      `git log -1 --format=%ae ${result.commitSha}`,
+      { cwd: ctx.primaryWs1 },
+    ).toString().trim();
+    const authorName = execSync(
+      `git log -1 --format=%an ${result.commitSha}`,
+      { cwd: ctx.primaryWs1 },
+    ).toString().trim();
+    expect(authorEmail).toBe('41898282+github-actions[bot]@users.noreply.github.com');
+    expect(authorName).toBe('github-actions[bot]');
+  });
+
   it('main branch is unchanged after applyFix (T-3-FIX-05 — no upstream corruption)', async () => {
     const mainShaBefore = execSync('git rev-parse main', { cwd: ctx.remoteDir }).toString().trim();
     await applyFix({

@@ -51,6 +51,8 @@ async function main(): Promise<void> {
     testCommand:    core.getInput('test_command'),
     baseUrl:        core.getInput('base_url'),
     workingDirectory: core.getInput('working_directory'),
+    botEmail:       core.getInput('bot_email'),
+    botName:        core.getInput('bot_name'),
     apiKey,
     healerToken,
     githubToken,

@@ -45,7 +45,10 @@ const { version: VERSION } = require('../../package.json') as { version: string 
 
 export async function run(config: Config): Promise<void> {
   // ── Step 1: LOOP GUARD (SEC-05) — must be first ──────────────────────────
-  if (shouldSkipIngest()) {
+  // Pass config.botEmail so Guard 1 matches user-customized heal commits
+  // (e.g., 41898282+github-actions[bot]@... default for Vercel compatibility)
+  // in addition to the legacy BOT_EMAIL constant.
+  if (shouldSkipIngest(config.botEmail)) {
     return; // shouldSkipIngest() emits the core.info() message
   }
 

@@ -52,6 +52,23 @@ inputs:
       use `cd` themselves. Default: '' (workspace root).
     required: false
     default: ''
+  bot_email:
+    description: |
+      Git author email used for heal-PR commits. Some deploy gates (Vercel,
+      Netlify, GitLab CI/CD checks) verify that the commit author email maps
+      to a known GitHub account before allowing the deployment to proceed.
+      Default is the canonical github-actions[bot] noreply form, which maps
+      to a real bot account and is recognized by these systems. Override
+      with your own bot account or PAT-owner email if you want different
+      attribution.
+    required: false
+    default: '41898282+github-actions[bot]@users.noreply.github.com'
+  bot_name:
+    description: |
+      Git author name used for heal-PR commits. Pairs with bot_email above.
+      Default matches the github-actions[bot] convention.
+    required: false
+    default: 'github-actions[bot]'
   provider:
     description: 'Inference provider: anthropic | gemini | github | ollama'
     required: false
@@ -282,6 +299,8 @@ runs:
         INPUT_TEST_COMMAND: ${{ inputs.test_command }}
         INPUT_BASE_URL: ${{ inputs.base_url }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working_directory }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
+        INPUT_BOT_NAME: ${{ inputs.bot_name }}
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_API_ENDPOINT: ${{ inputs.api_endpoint }}

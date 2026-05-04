@@ -330,6 +330,8 @@ export async function run(config: Config): Promise<void> {
       shortSha,
       cwd,
       token: config.healerToken,
+      botEmail: config.botEmail,
+      botName: config.botName,
     });
 
     // ── Step 10: Validate the fix (VAL-01 / VAL-02 / VAL-03) ────────────

@@ -101,6 +101,8 @@ const baseConfig: Config = {
   mode: 'heal',
   setupCommand: '', startCommand: '', testCommand: '', baseUrl: 'http://localhost:3000',
   workingDirectory: '',
+  botEmail: '41898282+github-actions[bot]@users.noreply.github.com',
+  botName: 'github-actions[bot]',
   apiKey: 'test', healerToken: 'pat', githubToken: 'gh',
   provider: 'gemini', model: '', apiEndpoint: '',
   reportPath: 'r', flakeRateThreshold: 0.2, flakeWindowDays: 7, slowRegressionPct: 1.5,

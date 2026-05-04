@@ -132,6 +132,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     testCommand: '',
     baseUrl: '',
     workingDirectory: '',
+    botEmail: '41898282+github-actions[bot]@users.noreply.github.com',
+    botName: 'github-actions[bot]',
     apiKey: 'key',
     healerToken: 'healer-pat',
     githubToken: 'gh-tok',

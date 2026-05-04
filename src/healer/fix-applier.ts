@@ -14,6 +14,12 @@ import * as path from 'node:path';
 import { SKIP_SENTINEL, BOT_EMAIL, BOT_NAME } from '../shared/loop-guard.js';
 import { normalizeDiff } from './diff-normalizer.js';
 
+// BOT_EMAIL / BOT_NAME from loop-guard.js are the *fallback* identity used
+// when a caller doesn't supply args.botEmail / args.botName. Real callers
+// (healer/index.ts) always pass the values from config.botEmail / config.botName,
+// which default in the schema to the canonical github-actions[bot] noreply.
+// The fallback exists so unit tests and historical call sites keep compiling.
+
 export class DiffApplyFailure extends Error {
   constructor(message: string) {
     super(message);
@@ -29,6 +35,12 @@ export interface ApplyFixArgs {
   cwd: string;             // workspace where origin remote is configured
   token: string;           // healer_token PAT (registered with core.setSecret at startup);
                            //   ignored by file:// remotes — set to '' for tests
+  botEmail?: string;       // git author email for the heal commit. Optional —
+                           //   falls back to BOT_EMAIL constant for back-compat.
+                           //   Production callers thread config.botEmail through
+                           //   so deploy gates (Vercel, Netlify) that verify the
+                           //   commit-author → GitHub-account mapping accept the PR.
+  botName?: string;        // pairs with botEmail; falls back to BOT_NAME.
 }
 
 export interface ApplyFixResult {
@@ -36,13 +48,14 @@ export interface ApplyFixResult {
   commitSha: string;       // SHA of the new commit
 }
 
-const identityFlags = (): string[] => [
-  '-c', `user.email=${BOT_EMAIL}`,
-  '-c', `user.name=${BOT_NAME}`,
-];
-
 export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   const branch = `playwright-healer/${args.testSlug}-${args.shortSha}`;
+  const botEmail = args.botEmail ?? BOT_EMAIL;
+  const botName = args.botName ?? BOT_NAME;
+  const identityFlags = (): string[] => [
+    '-c', `user.email=${botEmail}`,
+    '-c', `user.name=${botName}`,
+  ];
 
   // Build inline credential flags for fetch. Same pattern as the push step
   // below. The empty-value reset preceding our auth header ensures we replace

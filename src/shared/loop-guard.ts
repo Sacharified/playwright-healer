@@ -18,10 +18,18 @@ export const SKIP_SENTINEL = '[skip-healer]';
  * Returns true if the current GitHub Actions event should be skipped by ingest.
  *
  * Guard 0: fork PR — payload.pull_request?.head?.repo?.fork === true
- * Guard 1: bot author email — payload.head_commit?.author?.email === BOT_EMAIL
+ * Guard 1: bot author email — payload.head_commit?.author?.email matches the
+ *          configured bot identity (or the legacy BOT_EMAIL constant for
+ *          back-compat with state-branch commits authored before bot_email
+ *          was configurable).
  * Guard 2: commit message — payload.head_commit?.message?.includes(SKIP_SENTINEL)
+ *
+ * @param configuredBotEmail - the email the heal pipeline currently uses for
+ *   PR commits (config.botEmail). Optional; when supplied, Guard 1 also
+ *   matches commits authored by that email so the loop guard tracks the
+ *   user's customized bot identity, not just the legacy default.
  */
-export function shouldSkipIngest(): boolean {
+export function shouldSkipIngest(configuredBotEmail?: string): boolean {
   const payload = github.context.payload;
 
   // Guard 0: Skip on fork PRs — fork repo cannot forge push payload author email,
@@ -33,8 +41,13 @@ export function shouldSkipIngest(): boolean {
 
   // Guard 1: Skip if the commit was authored by the healer bot itself.
   // Uses optional chaining because head_commit is undefined on non-push events.
-  if (payload.head_commit?.author?.email === BOT_EMAIL) {
-    core.info(`SEC-05 Guard 1: Skipping ingest — bot-authored commit detected (${BOT_EMAIL})`);
+  // Match BOTH the legacy BOT_EMAIL (state-branch commits, pre-config heal
+  // commits) AND the configured bot_email (current heal commits).
+  const authorEmail = payload.head_commit?.author?.email;
+  const botEmails = new Set([BOT_EMAIL]);
+  if (configuredBotEmail) botEmails.add(configuredBotEmail);
+  if (authorEmail !== undefined && botEmails.has(authorEmail)) {
+    core.info(`SEC-05 Guard 1: Skipping ingest — bot-authored commit detected (${authorEmail})`);
     return true;
   }
 

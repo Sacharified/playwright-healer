@@ -45,6 +45,12 @@ export function getInputSchema() {
     // setup/start/test_command are NOT affected — they still run from
     // workspace root and can use their own `cd` prefixes.
     workingDirectory: z.string().default(''),
+    // Git author identity used for heal-PR commits. Defaults to the canonical
+    // github-actions[bot] noreply, which maps to a real GitHub bot account
+    // and is accepted by deploy gates (Vercel, Netlify, etc.) that verify
+    // commit-author → GitHub-account mapping.
+    botEmail:        z.string().min(1).default('41898282+github-actions[bot]@users.noreply.github.com'),
+    botName:         z.string().min(1).default('github-actions[bot]'),
     apiKey:          z.string().default(''),
     healerToken:     z.string().min(1, { message: 'healer_token is required and must be non-empty' }),
     githubToken:     z.string().min(1, { message: 'github_token is required and must be non-empty' }),
