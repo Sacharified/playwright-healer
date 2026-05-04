@@ -99,11 +99,17 @@ jobs:
       # ──────────────────────────────────────────────────────────────────
       - name: 'Check 3a: Security-Contract-Change trailer on contract-touching commits (D-13)'
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_REF="${{ github.base_ref }}"
-            git fetch --no-tags origin "$BASE_REF"
+            # Inline auth header (not persisted to .git/config) so SEC-01 invariant holds.
+            # Required because the checkout uses persist-credentials: false; without this
+            # `git fetch origin` fails on private repos.
+            AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+            git -c http.extraheader="$AUTH_HEADER" fetch --no-tags origin "$BASE_REF"
             RANGE="origin/$BASE_REF...HEAD"
           else
             # push trigger — inspect the latest commit only
