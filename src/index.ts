@@ -61,6 +61,7 @@ async function main(): Promise<void> {
     flakeRateThreshold:      core.getInput('flake_rate_threshold'),
     flakeWindowDays:         core.getInput('flake_window_days'),
     slowRegressionPct:       core.getInput('slow_regression_pct'),
+    minRunsForDetection:     core.getInput('min_runs_for_detection'),
     rerunCount:              core.getInput('rerun_count'),
     rerunPassRate:           core.getInput('rerun_pass_rate'),
     maxBudgetUsd:            core.getInput('max_budget_usd'),

@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { evaluateThresholds } from '../../src/ingest/threshold-evaluator.js';
+import { evaluateThresholds, summarizeBelowGate } from '../../src/ingest/threshold-evaluator.js';
 import type { NdjsonRecord, NdjsonTestEntry } from '../../src/shared/types.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ const DEFAULT_CONFIG = {
   flakeRateThreshold: 0.2,
   flakeWindowDays: 30,
   slowRegressionPct: 1.5,
+  minRunsForDetection: 10,
 };
 
 /**
@@ -371,5 +372,79 @@ describe('evaluateThresholds — fixture smoke test', () => {
     expect(detections.length).toBeGreaterThanOrEqual(1);
     const d = detections.find((det) => det.reason === 'flake-rate');
     expect(d).toBeDefined();
+  });
+});
+
+// ─── min_runs_for_detection: configurable gate (UX issue from battledex run) ─
+
+describe('evaluateThresholds — minRunsForDetection configurability', () => {
+  it('honors a lower minRunsForDetection so 2/2 failures produce a detection', () => {
+    const testId = 'tests/broken.spec.ts::always fails';
+    const records = makeNRecords(testId, 2, 'failed');
+    const detections = evaluateThresholds(records, {
+      ...DEFAULT_CONFIG,
+      minRunsForDetection: 2,
+    });
+    const flake = detections.filter((d) => d.reason === 'flake-rate');
+    expect(flake).toHaveLength(1);
+    expect(flake[0].value).toBe(1.0);
+    expect(flake[0].runCount).toBe(2);
+  });
+
+  it('a higher minRunsForDetection suppresses detections that the default would emit', () => {
+    const testId = 'tests/flaky.spec.ts::sometimes fails';
+    const passed = makeNRecords(testId, 6, 'passed');
+    const failed = makeNRecords(testId, 4, 'failed', 100, 6);
+    const records = [...passed, ...failed];
+    const detections = evaluateThresholds(records, {
+      ...DEFAULT_CONFIG,
+      minRunsForDetection: 20,
+    });
+    expect(detections).toHaveLength(0);
+  });
+});
+
+describe('summarizeBelowGate', () => {
+  it('returns gated tests with at least one failure but fewer than min runs', () => {
+    const testId = 'tests/broken.spec.ts::two failures';
+    const records = makeNRecords(testId, 2, 'failed');
+    const gated = summarizeBelowGate(records, DEFAULT_CONFIG);
+    expect(gated).toHaveLength(1);
+    expect(gated[0]).toMatchObject({
+      testId,
+      runCount: 2,
+      failedCount: 2,
+      flakeRate: 1,
+    });
+  });
+
+  it('excludes tests with zero failures (they need no explanation)', () => {
+    const testId = 'tests/healthy.spec.ts::all pass';
+    const records = makeNRecords(testId, 3, 'passed');
+    const gated = summarizeBelowGate(records, DEFAULT_CONFIG);
+    expect(gated).toHaveLength(0);
+  });
+
+  it('excludes tests that have already cleared the gate (handled by evaluateThresholds)', () => {
+    const testId = 'tests/flaky.spec.ts::lots of runs';
+    const passed = makeNRecords(testId, 8, 'passed');
+    const failed = makeNRecords(testId, 4, 'failed', 100, 8);
+    const gated = summarizeBelowGate([...passed, ...failed], DEFAULT_CONFIG);
+    expect(gated).toHaveLength(0);
+  });
+
+  it('counts timed-out and flaky outcomes as failures alongside failed', () => {
+    const testId = 'tests/mixed.spec.ts::various outcomes';
+    const records = [
+      ...makeNRecords(testId, 1, 'failed', 100, 0),
+      ...makeNRecords(testId, 1, 'flaky', 100, 1),
+      ...makeNRecords(testId, 1, 'timed-out', 100, 2),
+      ...makeNRecords(testId, 1, 'passed', 100, 3),
+    ];
+    const gated = summarizeBelowGate(records, DEFAULT_CONFIG);
+    expect(gated).toHaveLength(1);
+    expect(gated[0].runCount).toBe(4);
+    expect(gated[0].failedCount).toBe(3);
+    expect(gated[0].flakeRate).toBeCloseTo(0.75);
   });
 });

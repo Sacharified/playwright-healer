@@ -14,6 +14,7 @@ const {
   mockRunGc,
   mockReadWindowRecords,
   mockEvaluateThresholds,
+  mockSummarizeBelowGate,
   mockWriteDetectionSummary,
   mockFireDispatch,
   mockBuildConcurrencyKey,
@@ -31,6 +32,7 @@ const {
   mockRunGc: vi.fn(),
   mockReadWindowRecords: vi.fn(),
   mockEvaluateThresholds: vi.fn(),
+  mockSummarizeBelowGate: vi.fn(),
   mockWriteDetectionSummary: vi.fn(),
   mockFireDispatch: vi.fn(),
   mockBuildConcurrencyKey: vi.fn(),
@@ -56,7 +58,10 @@ vi.mock('../shared/state-branch.js', () => ({
   removeWorktree: mockRemoveWorktree,
 }));
 vi.mock('./report-parser.js', () => ({ parseReport: mockParseReport }));
-vi.mock('./threshold-evaluator.js', () => ({ evaluateThresholds: mockEvaluateThresholds }));
+vi.mock('./threshold-evaluator.js', () => ({
+  evaluateThresholds: mockEvaluateThresholds,
+  summarizeBelowGate: mockSummarizeBelowGate,
+}));
 vi.mock('./summary-writer.js', () => ({ writeDetectionSummary: mockWriteDetectionSummary }));
 vi.mock('./dispatch.js', () => ({
   fireDispatch: mockFireDispatch,
@@ -136,6 +141,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     flakeRateThreshold: 0.2,
     flakeWindowDays: 7,
     slowRegressionPct: 1.5,
+    minRunsForDetection: 10,
     rerunCount: 10,
     rerunPassRate: 0.9,
     maxBudgetUsd: 2.0,
@@ -168,6 +174,7 @@ beforeEach(() => {
   mockAppendRecord.mockResolvedValue(undefined);
   mockRunGc.mockResolvedValue(undefined);
   mockEvaluateThresholds.mockReturnValue([]);
+  mockSummarizeBelowGate.mockReturnValue([]);
   mockWriteDetectionSummary.mockResolvedValue(undefined);
   mockFireDispatch.mockResolvedValue(undefined);
   mockBuildConcurrencyKey.mockReturnValue('test-concurrency-key');
@@ -242,6 +249,8 @@ describe('Step 8 summary-writer — dispatch mode signaled', () => {
     expect(mockWriteDetectionSummary).toHaveBeenCalledWith(
       [DETECTION],
       true,
+      [],
+      10,
     );
   });
 });
@@ -257,6 +266,8 @@ describe('Step 8 summary-writer — log-only mode', () => {
     expect(mockWriteDetectionSummary).toHaveBeenCalledWith(
       [DETECTION],
       false,
+      [],
+      10,
     );
   });
 });

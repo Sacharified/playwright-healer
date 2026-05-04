@@ -103,6 +103,7 @@ const baseConfig: Config = {
   apiKey: 'test', healerToken: 'pat', githubToken: 'gh',
   provider: 'gemini', model: '', apiEndpoint: '',
   reportPath: 'r', flakeRateThreshold: 0.2, flakeWindowDays: 7, slowRegressionPct: 1.5,
+  minRunsForDetection: 10,
   rerunCount: 10, rerunPassRate: 0.9, maxBudgetUsd: 2.0, maxTurns: 30,
   retentionDays: 90, maxHealsPerTestPerWeek: 3, stateBranchName: 'playwright-healer-state',
   enableSelectorFixes: true, enableWaitFixes: true, enableAssertionFixes: true, enableSlowFixes: true,

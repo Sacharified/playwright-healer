@@ -74,6 +74,17 @@ inputs:
     required: false
     default: '1.5'
 
+  min_runs_for_detection:
+    description: |
+      Minimum number of unique commits a test must run on (within flake_window_days)
+      before threshold evaluation can flag it. Tests below this gate are listed in the
+      step summary as "waiting for sample size" but are never dispatched. Lower values
+      surface flakes faster but raise the false-positive rate; the default reflects
+      Phase 02 research on minimum sample size for stable rolling-window flake-rate
+      estimates. Default: 10
+    required: false
+    default: '10'
+
   rerun_count:
     description: 'Number of validation re-runs after a fix (Phase 3+). Default: 10'
     required: false
@@ -266,6 +277,7 @@ runs:
         INPUT_FLAKE_RATE_THRESHOLD: ${{ inputs.flake_rate_threshold }}
         INPUT_FLAKE_WINDOW_DAYS: ${{ inputs.flake_window_days }}
         INPUT_SLOW_REGRESSION_PCT: ${{ inputs.slow_regression_pct }}
+        INPUT_MIN_RUNS_FOR_DETECTION: ${{ inputs.min_runs_for_detection }}
         INPUT_RERUN_COUNT: ${{ inputs.rerun_count }}
         INPUT_RERUN_PASS_RATE: ${{ inputs.rerun_pass_rate }}
         INPUT_MAX_BUDGET_USD: ${{ inputs.max_budget_usd }}

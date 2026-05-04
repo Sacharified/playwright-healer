@@ -34,7 +34,7 @@ import {
   removeWorktree,
 } from '../shared/state-branch.js';
 import type { NdjsonRecord, NdjsonTestEntry } from '../shared/types.js';
-import { evaluateThresholds } from './threshold-evaluator.js';
+import { evaluateThresholds, summarizeBelowGate } from './threshold-evaluator.js';
 import { writeDetectionSummary } from './summary-writer.js';
 import { fireDispatch, buildConcurrencyKey, recordCapHit } from './dispatch.js';
 import { classifyFixClass } from './classifier.js';
@@ -136,10 +136,18 @@ export async function run(config: Config): Promise<void> {
     // ── Step 7: THRESHOLD EVALUATION (DET-01..03) ────────────────────────
     const windowRecords = readWindowRecords(worktreePath, config.flakeWindowDays);
     const detections = evaluateThresholds(windowRecords, config);
+    const gated = summarizeBelowGate(windowRecords, config);
 
     // ── Step 8: STEP SUMMARY (DET-04) ───────────────────────────────────
     // Pass enableAutoDispatch so summary-writer surfaces live vs log-only mode.
-    await writeDetectionSummary(detections, config.enableAutoDispatch);
+    // gated + minRunsForDetection let the summary explain why a clearly-failing
+    // test isn't being healed yet (sample size still accumulating).
+    await writeDetectionSummary(
+      detections,
+      config.enableAutoDispatch,
+      gated,
+      config.minRunsForDetection,
+    );
 
     // ── Step 9: AUTO-DISPATCH (DET-05/06/07, Phase 04) ──────────────────
     // CONTEXT D-01: opt-in via enable_auto_dispatch (default 'false').

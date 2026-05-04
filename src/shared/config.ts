@@ -63,6 +63,11 @@ export function getInputSchema() {
                                 message: 'slow_regression_pct must be a valid number (e.g. 1.5)',
                               })
                               .min(1).default(1.5),
+    minRunsForDetection:    z.coerce.number()
+                              .refine((v) => !isNaN(v), {
+                                message: 'min_runs_for_detection must be a valid integer >= 1',
+                              })
+                              .int().min(1).default(10),
     rerunCount:             z.coerce.number()
                               .refine((v) => !isNaN(v), { message: 'rerun_count must be a valid integer' })
                               .int().min(1).default(10),
