@@ -234,7 +234,17 @@ export async function bootstrapOrGetWorktree(
     // Cannot use `git worktree add` on a non-existent ref (Pitfall J)
     // Note: tmpdir was already created by mkdtempSync above
 
-    await getExecOutput('git', ['init'], { cwd: worktreePath });
+    // -c init.defaultBranch=main suppresses git's "Using 'master' as the
+    // initial branch" hint. The initial branch never gets a commit (we
+    // immediately `checkout --orphan playwright-healer-state`), so the name
+    // is purely cosmetic — but the hint shows up as a 6-line warning in CI
+    // logs and looks like a real failure to the consumer. Pinning to 'main'
+    // matches modern defaults and is silent.
+    await getExecOutput(
+      'git',
+      ['-c', 'init.defaultBranch=main', 'init'],
+      { cwd: worktreePath },
+    );
     await getExecOutput(
       'git',
       ['remote', 'add', 'origin', repoRemoteUrl],
@@ -472,20 +482,44 @@ export async function runGc(
 /**
  * Remove a state branch worktree and guarantee the directory is gone.
  *
- * Pattern J fix: `git worktree remove` only works for worktrees registered via
- * `git worktree add`. The standalone-init path (first-ever bootstrap) creates a
- * separate .git dir — `git worktree remove` will fail with a non-zero exit on it.
- * Using ignoreReturnCode: true ensures cleanup proceeds regardless.
+ * Two cases (Pattern J):
+ *   - Linked worktree: created by `git worktree add` (existing-branch path).
+ *     Inside, `.git` is a FILE pointing at `<primary>/.git/worktrees/<name>`.
+ *     We need `git worktree remove` to clear that registration, and the
+ *     command must run from inside the parent repo's working tree.
+ *   - Standalone init: created by `git init` (first-ever bootstrap).
+ *     Inside, `.git` is a DIRECTORY. There is no parent registry to clear,
+ *     so `git worktree remove` is unnecessary — and worse, calling it from
+ *     `process.cwd()` (which is `${github.action_path}`, an actions tarball
+ *     extract that has no .git) prints `fatal: not a git repository` to
+ *     stderr, which surfaces as a red error in the consumer's run log.
+ *
+ * Detection by `fs.statSync('.git')`: file → linked, dir → standalone.
  *
  * @param worktreePath - path returned by bootstrapOrGetWorktree()
+ * @param primaryCwd   - cwd of the parent repo for linked-worktree removal.
+ *                       Defaults to GITHUB_WORKSPACE / process.cwd().
  */
-export async function removeWorktree(worktreePath: string): Promise<void> {
-  // ignoreReturnCode: true — standalone-init worktrees are not registered via worktree add
-  await getExecOutput(
-    'git',
-    ['worktree', 'remove', '--force', worktreePath],
-    { ignoreReturnCode: true },
-  );
+export async function removeWorktree(
+  worktreePath: string,
+  primaryCwd: string = process.env['GITHUB_WORKSPACE'] ?? process.cwd(),
+): Promise<void> {
+  let isLinkedWorktree = false;
+  try {
+    isLinkedWorktree = fs.statSync(path.join(worktreePath, '.git')).isFile();
+  } catch {
+    // .git missing — treat as standalone; rmSync below handles it
+  }
+
+  if (isLinkedWorktree) {
+    // Run from the parent repo so git can resolve the worktree registration.
+    // ignoreReturnCode: true preserves cleanup-on-failure semantics.
+    await getExecOutput(
+      'git',
+      ['worktree', 'remove', '--force', worktreePath],
+      { cwd: primaryCwd, ignoreReturnCode: true },
+    );
+  }
   // Always follow up with rmSync — guarantees cleanup even if git didn't know about it
   fs.rmSync(worktreePath, { recursive: true, force: true });
 }
