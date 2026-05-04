@@ -34,6 +34,24 @@ on:
         description: 'Fix class hint: selectors | waits | assertions | slow'
         required: false
         default: ''
+      commitSha:
+        description: 'Commit SHA to heal against (blank → HEAD of default branch)'
+        required: false
+        default: ''
+      # The four below are populated automatically by ingest auto-dispatch.
+      # They are optional for manual maintainer dispatch.
+      flakeRate:
+        description: 'Recent flake rate (0.0–1.0). Optional for manual dispatch.'
+        required: false
+        default: ''
+      windowDays:
+        description: 'Rolling window in days. Optional for manual dispatch.'
+        required: false
+        default: ''
+      runCount:
+        description: 'Recent run count. Optional for manual dispatch.'
+        required: false
+        default: ''
       concurrencyKey:
         description: 'Concurrency key (set automatically by ingest dispatch)'
         required: false
