@@ -127,13 +127,21 @@ jobs:
           kill "$(cat /tmp/fixture-pid)" 2>/dev/null || true
 
   # ── Job 2: Heal — invoke the action against the broken test ──
+  # Gated to workflow_dispatch only: the heal step requires populated dispatch
+  # inputs (commitSha, testFile, testTitle, fixClassHint, concurrencyKey) which
+  # are only available on workflow_dispatch events. On push/PR, github.event.inputs
+  # is empty and the Zod-validated dispatch payload at the action boundary (D-18)
+  # rejects undefined values. Push/PR events run only the dry-run/security
+  # scenarios (job 1 above + scenarios 3-N below) which don't require LLM API
+  # spend; live heal stays a manual maintainer trigger.
   heal:
     name: Heal broken test
     needs: assert-test-broken
-    runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'workflow_dispatch' &&
       !contains(github.event.head_commit.message, '[skip-healer]') &&
       github.actor != 'playwright-healer-bot'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
