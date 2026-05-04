@@ -19,7 +19,7 @@ playwright-healer is designed with defense-in-depth. The security controls below
 
 **Auto-merge gate (Phase 5):** When opt-in auto-merge is enabled, a four-condition trust gate applies independently of the diff-lint pass: post-fix validation pass rate, fix class within the allowed set, no forbidden patterns in the diff, and no security-contract violations. The gate soft-fails on any error — if it cannot confirm eligibility, the PR falls back to manual review.
 
-**Tool-naming contract (D-13):** The canonical allowed-tool form `mcp__playwright__*` is never written as an inline literal in source code. An audit invariant in `src/healer/security-contract.ts` enforces this at test time. Provider adapters translate to the provider's required naming convention at the call site; the scope (Playwright MCP + read-only file tools) is invariant.
+**Tool-naming contract (D-13):** The canonical allowed-tool form `mcp__playwright__*` is never written as an inline literal in source code. An audit invariant in `src/shared/security-contract.ts` enforces this at test time. Provider adapters translate to the provider's required naming convention at the call site; the scope (Playwright MCP + read-only file tools) is invariant.
 
 **Single source of truth for allow-lists (D-17):** Forbidden-pattern allow-lists are exported from `src/healer/forbidden-patterns.ts` and consumed by both the diff-lint pass and the auto-merge gate. They are never duplicated.
 
