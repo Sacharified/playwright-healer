@@ -44,11 +44,17 @@ const identityFlags = (): string[] => [
 export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   const branch = `playwright-healer/${args.testSlug}-${args.shortSha}`;
 
-  // Build inline credential flags for fetch (private repos require auth and
-  // actions/checkout was invoked with persist-credentials: false, so the
-  // runner's credential store is empty). Same pattern as the push step below.
+  // Build inline credential flags for fetch. Same pattern as the push step
+  // below. The empty-value reset preceding our auth header ensures we replace
+  // (not append to) any persisted `http.https://github.com/.extraheader` left
+  // in `.git/config` by the consumer's `actions/checkout` (default
+  // persist-credentials: true). Without the reset, both Authorization headers
+  // are sent and GitHub returns "Duplicate header: Authorization" / 400.
   const fetchAuth = args.token
-    ? ['-c', `http.https://github.com/.extraheader=Authorization: basic ${Buffer.from(`x-access-token:${args.token}`).toString('base64')}`]
+    ? [
+        '-c', 'http.https://github.com/.extraheader=',
+        '-c', `http.https://github.com/.extraheader=Authorization: basic ${Buffer.from(`x-access-token:${args.token}`).toString('base64')}`,
+      ]
     : [];
 
   // 1. Fetch the default branch (shallow — we only need the tip)
@@ -133,7 +139,13 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   //    branch wasn't pre-fetched.
   const auth = Buffer.from(`x-access-token:${args.token}`).toString('base64');
   const credentialFlags = args.token
-    ? ['-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`]
+    ? [
+        // Empty-value reset clears any persisted extraheader from
+        // actions/checkout's default persist-credentials: true; otherwise
+        // GitHub rejects with "Duplicate header: Authorization".
+        '-c', 'http.https://github.com/.extraheader=',
+        '-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`,
+      ]
     : [];
   await exec(
     'git',

@@ -31,14 +31,26 @@ const MAX_RETRIES = 5;
  * .git/config; per-invocation argv only. PAT was registered with
  * core.setSecret upstream so any leaked stderr is masked by the runner.
  *
+ * The first flag is an empty-value reset. `http.extraHeader` is multi-valued,
+ * so a persisted entry from the consumer's `actions/checkout` (default
+ * persist-credentials: true writes `http.https://github.com/.extraheader=
+ * Authorization: basic <GITHUB_TOKEN>` into .git/config) would stack with ours
+ * and produce a "Duplicate header: Authorization" 400 from the GitHub HTTP
+ * frontend. Per git docs, an empty value resets the list to empty; the second
+ * flag then installs ours as the sole header.
+ *
  * Returns [] when HEALER_TOKEN is unset/empty (local dev, file:// remotes, and
- * public repos all work without auth).
+ * public repos all work without auth — and we leave any persisted GITHUB_TOKEN
+ * extraheader untouched so public reads under default-checkout still work).
  */
 function gitCredentialFlags(): string[] {
   const token = process.env['HEALER_TOKEN'] ?? '';
   if (!token) return [];
   const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
-  return ['-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`];
+  return [
+    '-c', 'http.https://github.com/.extraheader=',
+    '-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`,
+  ];
 }
 
 /**
