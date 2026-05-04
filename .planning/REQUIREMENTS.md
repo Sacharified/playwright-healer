@@ -55,7 +55,8 @@
 - [x] **DET-04**: In `log-only` dispatch mode (default for v0 rollout), detections are written to the action's step summary but no dispatch fires — lets consumers validate thresholds before enabling healing
 - [ ] **DET-05**: In live dispatch mode, when a test crosses threshold, the action fires `workflow_dispatch` on a configurable healer-workflow file (default `.github/workflows/playwright-healer.yml`) with a self-contained JSON payload: commit SHA, test file, test title, fix-class hint, recent run stats
 - [ ] **DET-06**: Dispatch uses the `healer-token` PAT (not `GITHUB_TOKEN`) so the eventual healer PR's CI will actually run
-- [ ] **DET-07**: A concurrency group keyed on test file + test title prevents two simultaneous dispatches for the same test
+- [x] **DET-07
+**: A concurrency group keyed on test file + test title prevents two simultaneous dispatches for the same test
 
 ### Security & Loop Prevention (SEC)
 
@@ -88,7 +89,8 @@
 - [ ] **FIX-04**: The agent returns a structured proposal: `{ rootCause, fixClass, diff, rationale }`. The diff is applied to a working branch by the fix-applier — the agent itself does not have `Write` or `Edit` tools
 - [ ] **FIX-05**: The fix-applier rebases the working branch onto `origin/$(default_branch)` before applying the diff, so stale SHAs don't produce merge conflicts downstream
 - [ ] **FIX-06**: A diff-lint pass runs after the patch applies and fails the healer (without opening a PR) if the diff contains: `waitForTimeout`, positional selectors, relaxed assertion matchers, or touches any path outside the configured test-paths
-- [ ] **FIX-07**: The healer supports all four fix classes: selectors, waits/timing, assertions, slow-test optimizations, each with its own system-prompt section; classes can be individually disabled via CFG-04
+- [x] **FIX-07
+**: The healer supports all four fix classes: selectors, waits/timing, assertions, slow-test optimizations, each with its own system-prompt section; classes can be individually disabled via CFG-04
 - [ ] **FIX-08**: When the agent returns "no fix proposable" or its proposal fails diff-lint, the healer transitions to issue-fallback (PRI-03)
 
 ### Validation (VAL)
@@ -110,10 +112,14 @@
 
 ### Auto-merge (MRG)
 
-- [ ] **MRG-01**: Auto-merge is opt-in via `enable-auto-merge: true` in action inputs or repo config (default false)
-- [ ] **MRG-02**: An auto-merge decision fires only when: validation pass rate ≥ `auto-merge-pass-rate` (default 1.0 = 10/10), fix class is in `auto-merge-fix-classes` allow-list (default `["selectors"]`), and the diff touches only paths inside the configured test directory
-- [ ] **MRG-03**: When conditions hold, the action calls `gh pr merge --auto --squash` (or Octokit equivalent) so GitHub merges the PR once CI passes; it never merges without CI having passed
-- [ ] **MRG-04**: Auto-merge decisions are logged to the run summary with the reasoning band (all conditions + "matched" / "blocked by X")
+- [x] **MRG-01
+**: Auto-merge is opt-in via `enable-auto-merge: true` in action inputs or repo config (default false)
+- [x] **MRG-02
+**: An auto-merge decision fires only when: validation pass rate ≥ `auto-merge-pass-rate` (default 1.0 = 10/10), fix class is in `auto-merge-fix-classes` allow-list (default `["selectors"]`), and the diff touches only paths inside the configured test directory
+- [x] **MRG-03
+**: When conditions hold, the action calls `gh pr merge --auto --squash` (or Octokit equivalent) so GitHub merges the PR once CI passes; it never merges without CI having passed
+- [x] **MRG-04
+**: Auto-merge decisions are logged to the run summary with the reasoning band (all conditions + "matched" / "blocked by X")
 
 ### Documentation (DOC)
 

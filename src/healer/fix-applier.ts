@@ -12,6 +12,7 @@ import { exec, getExecOutput } from '@actions/exec';
 import { writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { SKIP_SENTINEL, BOT_EMAIL, BOT_NAME } from '../shared/loop-guard.js';
+import { normalizeDiff } from './diff-normalizer.js';
 
 export class DiffApplyFailure extends Error {
   constructor(message: string) {
@@ -43,10 +44,17 @@ const identityFlags = (): string[] => [
 export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   const branch = `playwright-healer/${args.testSlug}-${args.shortSha}`;
 
+  // Build inline credential flags for fetch (private repos require auth and
+  // actions/checkout was invoked with persist-credentials: false, so the
+  // runner's credential store is empty). Same pattern as the push step below.
+  const fetchAuth = args.token
+    ? ['-c', `http.https://github.com/.extraheader=Authorization: basic ${Buffer.from(`x-access-token:${args.token}`).toString('base64')}`]
+    : [];
+
   // 1. Fetch the default branch (shallow — we only need the tip)
   await exec(
     'git',
-    ['fetch', 'origin', args.defaultBranch, '--depth=50'],
+    [...fetchAuth, 'fetch', 'origin', args.defaultBranch, '--depth=50'],
     { cwd: args.cwd },
   );
 
@@ -58,10 +66,25 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
     { cwd: args.cwd },
   );
 
-  // 3. Write the diff to a temp file
+  // 3. Normalize the agent-emitted diff so `git apply` will accept it.
+  //    Models routinely emit malformed unified diffs — placeholder hunk
+  //    headers (`@@ ... @@`) and miscounted line totals are both common.
+  //    See diff-normalizer.ts for the full failure-mode catalogue.
+  //    Done AFTER the branch checkout so the source files we read for
+  //    line-number lookup match the diff's "before" state.
+  let normalizedDiff: string;
+  try {
+    normalizedDiff = normalizeDiff(args.diff, args.cwd);
+  } catch (err) {
+    throw new DiffApplyFailure(
+      `diff normalization failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // 4. Write the diff to a temp file
   const tempDir = process.env['RUNNER_TEMP'] ?? '/tmp';
   const patchPath = path.join(tempDir, 'playwright-healer.patch');
-  await writeFile(patchPath, args.diff, 'utf8');
+  await writeFile(patchPath, normalizedDiff, 'utf8');
 
   // 4. Apply the diff with 3-way merge fallback AND stage in one atomic op.
   //    `--index` stages exactly the files in the patch — untracked workspace

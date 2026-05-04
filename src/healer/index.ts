@@ -19,7 +19,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import type { Config } from '../shared/config.js';
-import { DEFAULT_MODELS } from '../shared/config.js';
+import { DEFAULT_MODELS, DEFAULT_ENDPOINTS } from '../shared/config.js';
 import { ALLOWED_TOOLS } from '../shared/security-contract.js';
 import { DispatchPayload } from './dispatch-payload.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from './adapter.js';
@@ -33,10 +33,13 @@ import { validate } from './validator.js';
 import type { ValidationResult } from './validator.js';
 import { applyFix } from './fix-applier.js';
 import { createGeminiAdapter } from './adapters/gemini.js';
+import { createGithubAdapter } from './adapters/github.js';
 import { anthropicAdapter } from './adapters/anthropic.js';
 import { ollamaAdapter } from './adapters/ollama.js';
-import { openHealerPr } from './pr-writer.js';
+import { openHealerPr, extractPatchedFiles } from './pr-writer.js';
 import { openIssue } from './issue-writer.js';
+import { shouldSkipHeal } from '../shared/loop-guard.js';
+import { appendHealEvent, bootstrapOrGetWorktree, removeWorktree } from '../shared/state-branch.js';
 
 function slugify(s: string): string {
   return s
@@ -60,6 +63,14 @@ function selectAdapter(config: Config): Adapter {
         maxTurns: config.maxTurns,
         maxBudgetUsd: config.maxBudgetUsd,
       });
+    case 'github':
+      return createGithubAdapter({
+        apiKey: config.apiKey,
+        model: config.model.length > 0 ? config.model : DEFAULT_MODELS.github,
+        endpoint: config.apiEndpoint.length > 0 ? config.apiEndpoint : (DEFAULT_ENDPOINTS.github ?? ''),
+        baseUrl: config.baseUrl,
+        maxTurns: config.maxTurns,
+      });
     case 'anthropic':
       return anthropicAdapter; // throws on call (D-01 stub)
     case 'ollama':
@@ -71,16 +82,18 @@ interface IssueOpts {
   config: Config;
   owner: string;
   repo: string;
+  testFile: string;
   testTitle: string;
   triggeringRunUrl: string;
   failureMode: FailureMode;
   rootCause: string;
   reproSteps: string;
   suggestedManualFix: string;
+  stateWorktreePath: string | null;
 }
 
 async function fileIssue(opts: IssueOpts): Promise<void> {
-  await openIssue({
+  const issueUrl = await openIssue({
     patToken: opts.config.healerToken,
     owner: opts.owner,
     repo: opts.repo,
@@ -91,6 +104,28 @@ async function fileIssue(opts: IssueOpts): Promise<void> {
     suggestedManualFix: opts.suggestedManualFix,
     triggeringRunUrl: opts.triggeringRunUrl,
   });
+
+  // Phase 04 — heal-event write site #2 (Pitfall 7).
+  // For the cap-exceeded branch (Step 1.5), the caller writes its OWN
+  // appendHealEvent with outcome: 'cap-reached' after this call.
+  // For all other failureMode tokens, write outcome: 'issue-opened' here.
+  if (opts.stateWorktreePath && opts.failureMode !== 'cap-exceeded') {
+    try {
+      await appendHealEvent(
+        {
+          schemaVersion: 1,
+          timestamp: new Date().toISOString(),
+          testId: `${opts.testFile}::${opts.testTitle}`,
+          outcome: 'issue-opened',
+          dispatchRunId: process.env.GITHUB_RUN_ID ?? 'local',
+          issueUrl,
+        },
+        opts.stateWorktreePath,
+      );
+    } catch (err) {
+      core.warning(`Phase 04: heal-event write failed (analytics-only loss): ${String(err)}`);
+    }
+  }
 }
 
 export async function run(config: Config): Promise<void> {
@@ -112,7 +147,52 @@ export async function run(config: Config): Promise<void> {
   // Default branch detection: action.yml passes it via env if available; fallback to 'main'.
   const defaultBranch = process.env['HEALER_DEFAULT_BRANCH'] ?? 'main';
 
+  // ── Step 1.5: SEC-05 Guard 3 — per-test heal cap (Phase 04, NEW per RESEARCH Pitfall 6) ─
+  // Bootstraps the state-branch worktree once; threaded through to Step 11
+  // and the cap-hit fileIssue branch. Removed in the outer finally block.
+  const remoteUrl =
+    `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/` +
+    `${process.env.GITHUB_REPOSITORY ?? ''}.git`;
+  let stateWorktreePath: string | null = null;
+
   try {
+    // Inner try/catch: bootstrap failure is non-fatal. If bootstrap fails,
+    // stateWorktreePath stays null and the pipeline continues without the
+    // Guard 3 backstop (D-04 ingest pre-check is the cheap layer).
+    try {
+      stateWorktreePath = await bootstrapOrGetWorktree(remoteUrl, cwd);
+      const testId = `${payload.testFile}::${payload.testTitle}`;
+      const guard3 = shouldSkipHeal(testId, config, stateWorktreePath);
+      if (guard3.skip) {
+        await fileIssue({
+          config, owner, repo,
+          testFile: payload.testFile,
+          testTitle: payload.testTitle,
+          stateWorktreePath,
+          triggeringRunUrl,
+          failureMode: 'cap-exceeded',
+          rootCause: `SEC-05 Guard 3: per-test heal cap reached (${guard3.count} >= ${config.maxHealsPerTestPerWeek}). Manual review required.`,
+          reproSteps: 'Inspect prior heal artifacts for this test in the state branch heal log (runs/YYYY/MM/DD-heals.ndjson).',
+          suggestedManualFix: 'A human must approve the next heal attempt by clearing the prior heal events on the state branch OR raising max_heals_per_test_per_week in workflow inputs.',
+        });
+        await appendHealEvent(
+          {
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            testId,
+            outcome: 'cap-reached',
+            dispatchRunId: process.env.GITHUB_RUN_ID ?? 'local',
+          },
+          stateWorktreePath,
+        );
+        return;  // outer finally WILL run — stateWorktreePath cleanup is guaranteed
+      }
+    } catch (err) {
+      core.warning(
+        `Phase 04 Guard 3: state-branch bootstrap failed (${String(err)}). Proceeding without backstop cap check.`,
+      );
+    }
+
     // ── Step 2: Select provider adapter (D-01 / D-02) ────────────────────
     const adapter = selectAdapter(config);
 
@@ -126,18 +206,25 @@ export async function run(config: Config): Promise<void> {
     });
 
     // ── Step 4: PRI-05 sanity rerun (deterministic-failure detection) ────
-    const sanity = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
-    if (!config.skipDeterministicCheck && sanity.passRate === 0) {
-      await fileIssue({
-        config, owner, repo,
-        testTitle: payload.testTitle,
-        triggeringRunUrl,
-        failureMode: 'deterministic-failure',
-        rootCause: `Test failed 0/${config.rerunCount} times on UNMODIFIED code — likely an application bug or a deterministic regression, not a flake.`,
-        reproSteps: `Run \`npx playwright test ${payload.testFile} --grep "${payload.testTitle}" --retries=0\` against the dispatch SHA.`,
-        suggestedManualFix: 'Inspect the failing assertion and recent application changes. The healer does NOT auto-fix deterministic failures — silently fixing a real regression is the highest-trust risk per project policy.',
-      });
-      return;
+    // WR-03 fix: validate() is expensive; skip it entirely when the deterministic
+    // check is disabled (demo mode). Was: validate ran unconditionally, then the
+    // result was checked behind the skip gate.
+    if (!config.skipDeterministicCheck) {
+      const sanity = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
+      if (sanity.passRate === 0) {
+        await fileIssue({
+          config, owner, repo,
+          testFile: payload.testFile,
+          testTitle: payload.testTitle,
+          stateWorktreePath,
+          triggeringRunUrl,
+          failureMode: 'deterministic-failure',
+          rootCause: `Test failed 0/${config.rerunCount} times on UNMODIFIED code — likely an application bug or a deterministic regression, not a flake.`,
+          reproSteps: `Run \`npx playwright test ${payload.testFile} --grep "${payload.testTitle}" --retries=0\` against the dispatch SHA.`,
+          suggestedManualFix: 'Inspect the failing assertion and recent application changes. The healer does NOT auto-fix deterministic failures — silently fixing a real regression is the highest-trust risk per project policy.',
+        });
+        return;
+      }
     }
 
     // ── Step 5: Assemble prompt (D-05 / D-06 / D-07 / D-08) ─────────────
@@ -167,7 +254,9 @@ export async function run(config: Config): Promise<void> {
         const burnTurns = err.turnsUsed;
         await fileIssue({
           config, owner, repo,
+          testFile: payload.testFile,
           testTitle: payload.testTitle,
+          stateWorktreePath,
           triggeringRunUrl,
           failureMode: 'agent-budget-exhausted',
           rootCause: `Agent exceeded budget ceiling: ${err.message}. Spent $${burnUsd.toFixed(4)} across ${burnTurns} turn(s) before exhaustion.`,
@@ -183,7 +272,9 @@ export async function run(config: Config): Promise<void> {
     if ('reason' in proposal) {
       await fileIssue({
         config, owner, repo,
+        testFile: payload.testFile,
         testTitle: payload.testTitle,
+        stateWorktreePath,
         triggeringRunUrl,
         failureMode: 'no-fix-proposable',
         rootCause: `Agent could not propose a fix: ${proposal.reason}`,
@@ -193,12 +284,23 @@ export async function run(config: Config): Promise<void> {
       return;
     }
 
+    // ── Phase 04 FIX-07 observability: log when the agent overrides the dispatch hint.
+    // The agent has authority — it observes the failure live (or via trace) and may
+    // reclassify based on evidence the classifier didn't have. The hint is advisory.
+    if (proposal.fixClass !== payload.fixClassHint) {
+      core.info(
+        `Agent overrode fixClassHint: hinted=${payload.fixClassHint}, chose=${proposal.fixClass}`,
+      );
+    }
+
     // ── Step 8: Diff-lint (FIX-06) ──────────────────────────────────────
     const findings = lintDiff(proposal.diff);
     if (!config.skipDiffLint && findings.length > 0) {
       await fileIssue({
         config, owner, repo,
+        testFile: payload.testFile,
         testTitle: payload.testTitle,
+        stateWorktreePath,
         triggeringRunUrl,
         failureMode: 'diff-lint-blocked',
         rootCause: `Agent proposed a fix that triggered ${findings.length} diff-lint finding(s): ${findings.map((f) => f.pattern).join(', ')}`,
@@ -224,14 +326,19 @@ export async function run(config: Config): Promise<void> {
     let validation: ValidationResult;
     if (config.skipPostFixValidation) {
       // Demo mode (D-02): fixture-ci.yml on the PR is the truth, not local validator.
+      // WR-02 fix: passRate stays at 0; total: 0 signals "skipped" to renderPrBody.
+      // Was: passRate: 1 caused the PR body to render "100%" against zero reruns,
+      // which read as a hard-passed validation when the validator was actually skipped.
       // perRun MUST be [] (not undefined) because pr-writer.ts maps over it.
-      validation = { passed: 0, total: 0, passRate: 1, perRun: [] };
+      validation = { passed: 0, total: 0, passRate: 0, perRun: [] };
     } else {
       validation = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
       if (validation.passRate < config.rerunPassRate) {
         await fileIssue({
           config, owner, repo,
+          testFile: payload.testFile,
           testTitle: payload.testTitle,
+          stateWorktreePath,
           triggeringRunUrl,
           failureMode: 'validation-failed',
           rootCause: `Fix validation pass rate ${(validation.passRate * 100).toFixed(0)}% (< required ${(config.rerunPassRate * 100).toFixed(0)}%). ${formatStatsLine(stats)}`,
@@ -244,7 +351,14 @@ export async function run(config: Config): Promise<void> {
 
     // ── Step 11: Open the PR (PRI-01 / PRI-02 / SC-1) ───────────────────
     // costUsd: stats.usdSpent — REAL data per PRI-02 (revised 2026-04-26).
-    await openHealerPr({
+    // Phase 05: auto-merge gate fields threaded from config + diff.
+    const autoMergeFixClasses = config.autoMergeFixClasses
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const patchedFiles = extractPatchedFiles(proposal.diff);
+
+    const prUrl = await openHealerPr({
       patToken: config.healerToken,
       owner,
       repo,
@@ -259,7 +373,31 @@ export async function run(config: Config): Promise<void> {
       costUsd: stats.usdSpent,
       triggeringRunUrl,
       traceLink: null,
+      // Phase 05:
+      enableAutoMerge: config.enableAutoMerge,
+      autoMergePassRate: config.autoMergePassRate,
+      autoMergeFixClasses,
+      patchedFiles,
     });
+
+    // Phase 04 — heal-event write site #1 (Pitfall 7): PR opened successfully.
+    if (stateWorktreePath) {
+      try {
+        await appendHealEvent(
+          {
+            schemaVersion: 1,
+            timestamp: new Date().toISOString(),
+            testId: `${payload.testFile}::${payload.testTitle}`,
+            outcome: 'pr-opened',
+            dispatchRunId: process.env.GITHUB_RUN_ID ?? 'local',
+            prUrl,
+          },
+          stateWorktreePath,
+        );
+      } catch (err) {
+        core.warning(`Phase 04: heal-event write failed (analytics-only loss): ${String(err)}`);
+      }
+    }
   } catch (err) {
     // BudgetExhausted is caught at Step 6 (inner catch) and handled there.
     // Any other error reaching here is an unexpected pipeline failure.
@@ -274,7 +412,9 @@ export async function run(config: Config): Promise<void> {
         config,
         owner,
         repo,
+        testFile: payload.testFile,
         testTitle: payload.testTitle,
+        stateWorktreePath,
         triggeringRunUrl,
         failureMode: 'no-fix-proposable',
         rootCause: `Unexpected pipeline error: ${msg.slice(0, 1000)}`,
@@ -290,5 +430,10 @@ export async function run(config: Config): Promise<void> {
   } finally {
     // ── HEA-06 inner cleanup (D-12 layer 1) ─────────────────────────────
     try { supervisorStop(); } catch { /* swallow — outer pkill is the safety net */ }
+    if (stateWorktreePath) {
+      await removeWorktree(stateWorktreePath).catch((e: unknown) =>
+        core.warning(`State worktree cleanup failed: ${String(e)}`),
+      );
+    }
   }
 }

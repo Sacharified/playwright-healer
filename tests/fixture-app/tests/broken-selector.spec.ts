@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Deliberately broken: #wrong-id does not exist in fixture/index.html
+// Deliberately broken: #wrong-id does not exist in tests/fixture-app/index.html
 // (the real button id is #correct-id). The healer is expected to fix this
 // via either a literal id swap or a more semantic locator (getByRole).
 //

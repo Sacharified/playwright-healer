@@ -14,7 +14,10 @@ import type { ContextBundle } from './types.js';
 
 export interface FixProposal {
   rootCause: string;
-  fixClass: 'selectors' | 'waits';
+  // Phase 04 widen: all four v1 fix classes (FIX-07 cascade — adapter.ts is the
+  // UPSTREAM type; prompt-assembler.ts, pr-writer.ts, and adapters/github.ts +
+  // adapters/gemini.ts parseFinalText() follow from this widening per PATTERNS.md).
+  fixClass: 'selectors' | 'waits' | 'assertions' | 'slow';
   diff: string;
   rationale: string;
 }

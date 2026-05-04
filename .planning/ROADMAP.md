@@ -19,8 +19,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Ingest + State Branch + Log-Only Detection** (complete 2026-04-25) - Build and validate the git-as-DB observability layer at zero API cost; consuming repos can adopt and see their stats
 - [x] **Phase 3: Manual Healer (Selectors + Waits + Issue Fallback)** (complete 2026-04-29) - Full healer pipeline triggered via manual `workflow_dispatch`; agent loop, fix applier, validator, PR path, and issue fallback. 13 plans + 2 gap-closure plans (03-14, 03-15) all shipped; HUMAN-UAT Tests 1+2 PASS (SC-1 PR creation; IN-01 SIGTERM propagation via Scenario 7 run 25110355292)
 - [x] **Phase 3.1: First Heal — End-to-End Demo** (INSERTED 2026-04-29, complete 2026-04-29) - Phase 03 shipped infrastructure but never exercised the heal pipeline against a real LLM in real CI. Demonstrated end-to-end: PR [#1](https://github.com/Sacharified/playwright-healer-test/pull/1) opened with a Gemini-2.5-Flash-generated selector fix; fixture-ci.yml conclusion `success`; total Gemini cost $0.0382 USD. Six Phase-04 hardening items surfaced (clean-true subpath collision, free-tier model default, fix-applier scope leak, fix-applier no-force push, --3way fetch-depth warning, --force-with-lease stale-info on shallow clones).
-- [ ] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers
-- [ ] **Phase 5: Auto-Merge** - Add opt-in auto-merge for high-confidence fixes that pass all trust-chain gates
+- [x] **Phase 4: Auto-Dispatch + Full Fix Classes + Deduplication** (complete 2026-05-02) - Enable automatic threshold-triggered dispatch, add assertions and slow-test fix classes, and deduplicate PRs/issues for repeat triggers. SC#4 PRI-04 dedup empirically verified live (run 25247935856). SC#1/2/3 verified statically (403 unit tests + Step A end-to-end heal); live dispatches B/C/D deferred to 04-05-HUMAN-UAT.md.
+- [x] **Phase 5: Auto-Merge** (complete 2026-05-02) - Opt-in `enable_auto_merge` gate: evaluateAutoMerge() four-condition gate, enableAutoMerge() GraphQL mutation with D-05 soft-fail, renderAutoMergeBand() reasoning band. SC#1 + SC#4 verified live (Run 1, PR #3); SC#2 live happy-path deferred to Phase 6 (GitHub Free tier); SC#3 + D-05 verified by unit-level Tests IN5 + EF1-EF5.
 - [ ] **Phase 6: Documentation + Release** - Ship consumer documentation, example workflows, self-test CI, and the first immutable version tag
 
 ## Phase Details
@@ -147,7 +147,12 @@ Plans:
   2. Two simultaneous dispatch events for the same test (same test file + title key) produce only one queued healer run, not two parallel runs
   3. A fixture test whose root cause is a slow assertion (not a selector or timing issue) triggers an assertions fix or slow-test optimization fix from the agent rather than "no fix proposable"
   4. Triggering the healer a second time for a test that already has an open healer PR or issue results in a comment added to the existing item, not a duplicate PR or issue created
-**Plans**: TBD
+**Plans**: 5 plans
+- [x] 04-01-PLAN.md — Type widening + ingest dispatch wiring (DET-05, DET-06, DET-07 key-build half) — Wave 1
+- [x] 04-02-PLAN.md — FIX-07 type cascade + classifier + 4 new prompt templates (FIX-07) — Wave 2 (depends on 01)
+- [x] 04-03-PLAN.md — PRI-04 dedup queries (PRI-04) — Wave 3 (depends on 02 — pr-writer.ts cascade)
+- [x] 04-04-PLAN.md — Heal-cap (D-04) + healer-side SEC-05 Guard 3 + heal-event NDJSON + WR-02/WR-03 fixes + WR-01 verify (DET-07) — Wave 4 (depends on 01, 02, 03)
+- [x] 04-05-PLAN.md — E2E verification: concurrency block + assertion fixture + full-gates re-run + manual UAT (DET-07, FIX-07) — Wave 5 (depends on 01, 02, 03, 04) — Step A passed (run 25240708504); Steps B/C/D deferred to 04-05-HUMAN-UAT.md
 
 ### Phase 5: Auto-Merge
 **Goal**: Repos that opt in to auto-merge see eligible healer PRs (selectors fix class, 10/10 validation pass rate, CI green, test-directory-only diff) automatically merged via GitHub's merge queue without human action
@@ -158,7 +163,10 @@ Plans:
   2. With `enable-auto-merge: true`, a healer PR for a selector fix that passes 10/10 reruns and has CI green is merged automatically; the run summary explains which conditions matched
   3. A healer PR that touches a file outside the configured test directory is blocked from auto-merge and the run summary states "blocked by: files outside test directory" even if all other conditions pass
   4. Auto-merge decisions are written to the step summary with the full reasoning band showing each condition and whether it matched or blocked
-**Plans**: TBD
+**Plans**: 3 plans
+- [x] 05-01-PLAN.md — Config schema foundation: enableAutoMerge/autoMergePassRate/autoMergeFixClasses Zod fields + action.yml inputs + OpenHealerPrArgs interface widening (MRG-01) — Wave 1
+- [x] 05-02-PLAN.md — Gate implementation: evaluateAutoMerge() + enableAutoMerge() GraphQL + renderAutoMergeBand() + wired into openHealerPr() + index.ts call site (MRG-02, MRG-03, MRG-04) — Wave 2 (depends on 01)
+- [x] 05-03-PLAN.md — UAT verification: README §Auto-merge prerequisites stub (D-10) + four-run evidence record (SC#1-SC#4 + D-05/D-07/D-08/T-05-06); SC#2 live deferred to Phase 6 — Wave 3 (depends on 01, 02)
 
 ### Phase 6: Documentation + Release
 **Goal**: A new consumer can adopt playwright-healer in one PR by copying example workflows from the README; the repo has an immutable version tag, a self-test CI workflow, and a SECURITY.md; all prior work is packaged for public consumption
@@ -169,7 +177,15 @@ Plans:
   2. The README sequence diagram correctly describes the two-workflow architecture (ingest on every CI push, healer dispatched separately) and documents why `GITHUB_TOKEN` alone is insufficient for PR creation
   3. Pushing to main in the playwright-healer repo triggers a self-test CI workflow that exercises the action against a fixture Playwright repo on `ubuntu-latest` and passes
   4. The repo has at least one immutable version tag (`v0.1.0`) that consumers can pin in `uses:`, and the tag points to a commit where `npm ci --production` correctly installs the Claude Agent SDK native binary on `ubuntu-latest`
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Security pre-flight: .gitleaks.toml allowlist + gitleaks scan + SECURITY.md + CONTRIBUTING.md (PKG-03, DOC-05) — Wave 1
+- [ ] 06-02-PLAN.md — Fixture rename: fixture/ → tests/fixture-app/ + all in-repo + cross-repo reference updates (PKG-04) — Wave 1
+- [ ] 06-03-PLAN.md — Core docs: README (11 sections + Mermaid diagram) + CHANGELOG [Unreleased] + security-lint.yml exclusion update (PKG-05, DOC-01, DOC-03, DOC-04, DOC-05) — Wave 2
+- [ ] 06-04-PLAN.md — docs/ companion files: auto-merge.md + release-process.md + examples/gemini.yml + examples/github-models.yml + examples/ingest.yml (PKG-05, DOC-02) — Wave 2
+- [ ] 06-05-PLAN.md — Self-test promotion: e2e-heal-self.yml → self-test.yml with push/PR/dispatch triggers + playwright-healer-bot actor guard (PKG-04) — Wave 3
+- [ ] 06-06-PLAN.md — Release: pre-flight checklist + CHANGELOG [Unreleased]→[0.1.0] + repo visibility flip CHECKPOINT + v0.1.0 tag + v1 alias + GitHub Release (PKG-03, DOC-05) — Wave 4
 
 ## Progress
 
@@ -185,6 +201,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Ingest + State Branch + Log-Only Detection | 7/7 | Complete | 2026-04-25 |
 | 3. Manual Healer (Selectors + Waits + Issue Fallback) | 15/15 | Complete | 2026-04-29 |
 | 3.1 First Heal — End-to-End Demo (INSERTED) | 3/3 | Complete | 2026-04-29 |
-| 4. Auto-Dispatch + Full Fix Classes + Deduplication | 0/TBD | Not started | - |
-| 5. Auto-Merge | 0/TBD | Not started | - |
-| 6. Documentation + Release | 0/TBD | Not started | - |
+| 4. Auto-Dispatch + Full Fix Classes + Deduplication | 3/5 | In progress | - |
+| 5. Auto-Merge | 3/3 | Complete | 2026-05-02 |
+| 6. Documentation + Release | 0/6 | Planned | - |

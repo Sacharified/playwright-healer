@@ -1,0 +1,6 @@
+[allowlist]
+description = "Test fixture strings, not real secrets"
+regexes = [
+  '''ghp_test''',
+  '''sk-ant-test''',
+]

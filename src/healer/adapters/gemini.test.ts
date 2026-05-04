@@ -230,6 +230,60 @@ describe('geminiAdapter — FIX-04 result parsing + revised contract stats', () 
   });
 });
 
+describe('geminiAdapter — FIX-07 parseFinalText class widening', () => {
+  it('accepts fixClass: assertions (FIX-07 — assertions class must not be rejected)', async () => {
+    const assertionsJson = JSON.stringify({
+      rootCause: 'Assertion wrong',
+      fixClass: 'assertions',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'correct expected value',
+    });
+    mockGenerateContent.mockResolvedValueOnce({
+      text: assertionsJson,
+      usageMetadata: {},
+      functionCalls: undefined,
+    });
+    const adapter = createGeminiAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ fixClass: 'assertions' });
+  });
+
+  it('accepts fixClass: slow (FIX-07 — slow class must not be rejected)', async () => {
+    const slowJson = JSON.stringify({
+      rootCause: 'Test too slow',
+      fixClass: 'slow',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'use Promise.all to overlap waits',
+    });
+    mockGenerateContent.mockResolvedValueOnce({
+      text: slowJson,
+      usageMetadata: {},
+      functionCalls: undefined,
+    });
+    const adapter = createGeminiAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ fixClass: 'slow' });
+  });
+
+  it('rejects fixClass: unknown-class (negative case stays narrow)', async () => {
+    const unknownJson = JSON.stringify({
+      rootCause: 'Something',
+      fixClass: 'unknown-class',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'whatever',
+    });
+    mockGenerateContent.mockResolvedValueOnce({
+      text: unknownJson,
+      usageMetadata: {},
+      functionCalls: undefined,
+    });
+    const adapter = createGeminiAdapter(makeOpts());
+    await expect(adapter.runAgent(minimalContext, 'system', [])).rejects.toThrow(
+      /Agent JSON does not match FixProposal or NoFixProposable shape/,
+    );
+  });
+});
+
 describe('geminiAdapter — HEA-06 inner cleanup', () => {
   it('closes mcpClient on success', async () => {
     mockGenerateContent.mockResolvedValueOnce({

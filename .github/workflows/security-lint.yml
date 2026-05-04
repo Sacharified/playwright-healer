@@ -30,6 +30,10 @@ jobs:
             ':(exclude).planning/' \
             ':(exclude)CLAUDE.md' \
             ':(exclude)README.md' \
+            ':(exclude)CHANGELOG.md' \
+            ':(exclude)SECURITY.md' \
+            ':(exclude)CONTRIBUTING.md' \
+            ':(exclude)docs/' \
             ':(exclude).github/workflows/security-lint.yml' \
             ':(exclude)src/shared/security-contract.ts' \
             || true)
@@ -95,11 +99,17 @@ jobs:
       # ──────────────────────────────────────────────────────────────────
       - name: 'Check 3a: Security-Contract-Change trailer on contract-touching commits (D-13)'
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_REF="${{ github.base_ref }}"
-            git fetch --no-tags origin "$BASE_REF"
+            # Inline auth header (not persisted to .git/config) so SEC-01 invariant holds.
+            # Required because the checkout uses persist-credentials: false; without this
+            # `git fetch origin` fails on private repos.
+            AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+            git -c http.extraheader="$AUTH_HEADER" fetch --no-tags origin "$BASE_REF"
             RANGE="origin/$BASE_REF...HEAD"
           else
             # push trigger — inspect the latest commit only
@@ -143,6 +153,7 @@ jobs:
                 allowedOriginTemplate: ['<baseUrl>', 'http://localhost:*'],
                 allowedTools: [...m.ALLOWED_TOOLS].sort(),
                 forbiddenWorkflowTriggers: [...m.FORBIDDEN_WORKFLOW_TRIGGERS].sort(),
+                mcpPlaywrightToolPrefix: m.MCP_PLAYWRIGHT_TOOL_PREFIX,
               };
               const sortKeys = (o) => Array.isArray(o)
                 ? [...o].sort()
@@ -165,17 +176,50 @@ jobs:
 
       # ──────────────────────────────────────────────────────────────────
       # CHECK 4 — SEC-07 (T-1-04): No HTTP client call-sites in src/**
-      # Pattern 12. Phase 1 allowlist is EMPTY. Phases 2/3 will extend the allowlist.
+      # Pattern 12. Allowlist:
+      #   - src/healer/app-supervisor.ts — waitForReady() polls the consumer's
+      #     baseUrl with fetch() to gate test execution on app startup. The
+      #     target host is the consumer's own app, not external; no exfiltration
+      #     surface. Reviewed under D-14 v0.1.0.
       # ──────────────────────────────────────────────────────────────────
       - name: 'Check 4: No HTTP clients in src/** (SEC-07)'
         shell: bash
         run: |
           set -euo pipefail
           PATTERNS='fetch\(|http\.request\(|https\.request\(|axios|got\(|node-fetch|undici'
-          MATCHES=$(git grep -nE "$PATTERNS" -- 'src/*.ts' 'src/**/*.ts' || true)
+          MATCHES=$(git grep -nE "$PATTERNS" -- \
+            'src/*.ts' 'src/**/*.ts' \
+            ':!src/healer/app-supervisor.ts' || true)
           if [ -n "$MATCHES" ]; then
-            echo "::error::SEC-07 violation: HTTP client call-site found in src/ (Phase 1 allowlist is empty)"
+            echo "::error::SEC-07 violation: HTTP client call-site found in src/ (outside allowlist)"
             echo "$MATCHES" | sed 's/^/  /'
             exit 1
           fi
-          echo "OK: no HTTP client call-sites in src/"
+          echo "OK: no HTTP client call-sites in src/ (outside allowlist)"
+
+      # ──────────────────────────────────────────────────────────────────
+      # CHECK 5 — WR-01 regression (no global gitconfig PAT writes)
+      # Phase 04: must NOT regress the global gitconfig auth pattern.
+      # The action uses inline `git -c http.extraheader` per-invocation
+      # (fix-applier.ts ~L127). A reintroduction of `git config --global
+      # url.insteadOf` would write the PAT to the runner's ~/.gitconfig.
+      # ──────────────────────────────────────────────────────────────────
+      - name: 'Check 5: WR-01 regression — no global gitconfig PAT writes'
+        shell: bash
+        run: |
+          set -e
+          # Phase 04 WR-01: must NOT regress the global gitconfig auth pattern.
+          # The action uses inline `git -c http.extraheader` per-invocation
+          # (fix-applier.ts ~L127). A reintroduction of `git config --global
+          # url.insteadOf` would write the PAT to the runner's ~/.gitconfig.
+          MATCHES=$(grep -rn 'git config --global url.insteadOf' \
+            action.yml src/ .github/workflows/ \
+            --exclude-dir=node_modules --exclude='*.snap' \
+            --exclude='security-lint.yml' \
+            || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::WR-01 regression detected — global gitconfig PAT writes:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "WR-01 verified: no global gitconfig PAT writes."

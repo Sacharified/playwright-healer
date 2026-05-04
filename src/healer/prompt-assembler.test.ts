@@ -106,3 +106,90 @@ describe('prompt-assembler — D-05/D-06/D-07/D-08, FIX-03, HEA-05', () => {
     expect(result).not.toContain('{{BASE_URL}}');
   });
 });
+
+describe('prompt-assembler — FIX-07 new fix class templates (assertions + slow)', () => {
+  const baseArgs = {
+    testTitle: 't',
+    testFile: 'f.spec.ts',
+    baseUrl: 'http://x',
+  };
+
+  // Test 1: assertions + no-trace
+  it('assertions no-trace: contains assertion strengthening guidance', () => {
+    const out = assemblePrompt({ ...baseArgs, fixClassHint: 'assertions', traceAttachmentPath: null });
+    expect(out.toLowerCase()).toMatch(/assertion strengthening hierarchy/i);
+  });
+
+  // Test 2: assertions + with-trace
+  it('assertions with-trace: contains assertion strengthening guidance (different from no-trace)', () => {
+    const withTrace = assemblePrompt({ ...baseArgs, fixClassHint: 'assertions', traceAttachmentPath: '/tmp/trace.zip' });
+    const noTrace   = assemblePrompt({ ...baseArgs, fixClassHint: 'assertions', traceAttachmentPath: null });
+    expect(withTrace.toLowerCase()).toMatch(/assertion strengthening hierarchy/i);
+    expect(withTrace).not.toBe(noTrace); // with-trace is a different template
+  });
+
+  // Test 3: slow + no-trace
+  it('slow no-trace: contains slow-test optimization guidance', () => {
+    const out = assemblePrompt({ ...baseArgs, fixClassHint: 'slow', traceAttachmentPath: null });
+    expect(out.toLowerCase()).toMatch(/slow-test optimization hierarchy/i);
+  });
+
+  // Test 4: slow + with-trace
+  it('slow with-trace: contains slow-test optimization guidance', () => {
+    const out = assemblePrompt({ ...baseArgs, fixClassHint: 'slow', traceAttachmentPath: '/tmp/trace.zip' });
+    expect(out.toLowerCase()).toMatch(/slow-test optimization hierarchy/i);
+  });
+
+  // Test 5: no leftover {{ in any of the four new templates
+  it('all four new templates interpolate all placeholders (no leftover {{)', () => {
+    const combos: Array<{ fixClassHint: 'assertions' | 'slow'; traceAttachmentPath: string | null }> = [
+      { fixClassHint: 'assertions', traceAttachmentPath: null },
+      { fixClassHint: 'assertions', traceAttachmentPath: '/tmp/trace.zip' },
+      { fixClassHint: 'slow',       traceAttachmentPath: null },
+      { fixClassHint: 'slow',       traceAttachmentPath: '/tmp/trace.zip' },
+    ];
+    for (const combo of combos) {
+      const out = assemblePrompt({ ...baseArgs, ...combo });
+      expect(out, `leftover {{ in ${combo.fixClassHint}-${combo.traceAttachmentPath ? 'with-trace' : 'no-trace'}`).not.toMatch(/\{\{/);
+    }
+  });
+
+  // Test 6: each new template contains the Forbidden stanza (defense-in-depth)
+  it('all four new templates contain Forbidden stanza with interpolated FORBIDDEN_PATTERNS', () => {
+    const combos: Array<{ fixClassHint: 'assertions' | 'slow'; traceAttachmentPath: string | null }> = [
+      { fixClassHint: 'assertions', traceAttachmentPath: null },
+      { fixClassHint: 'assertions', traceAttachmentPath: '/tmp/trace.zip' },
+      { fixClassHint: 'slow',       traceAttachmentPath: null },
+      { fixClassHint: 'slow',       traceAttachmentPath: '/tmp/trace.zip' },
+    ];
+    for (const combo of combos) {
+      const out = assemblePrompt({ ...baseArgs, ...combo });
+      // The Forbidden stanza must be present and the {{FORBIDDEN_PATTERNS}} interpolated
+      expect(out, `missing Forbidden stanza in ${combo.fixClassHint}`).toMatch(/Forbidden/);
+      expect(out, `leftover FORBIDDEN_PATTERNS placeholder`).not.toContain('{{FORBIDDEN_PATTERNS}}');
+    }
+  });
+
+  // Snapshots for the two no-trace variants (extend the existing snapshot file)
+  it('snapshot — assertions + no-trace variant is stable', () => {
+    const out = assemblePrompt({
+      fixClassHint: 'assertions',
+      traceAttachmentPath: null,
+      testTitle: 'snapshot test',
+      testFile: 'tests/snap.spec.ts',
+      baseUrl: 'http://localhost:3000',
+    });
+    expect(out).toMatchSnapshot();
+  });
+
+  it('snapshot — slow + no-trace variant is stable', () => {
+    const out = assemblePrompt({
+      fixClassHint: 'slow',
+      traceAttachmentPath: null,
+      testTitle: 'snapshot test',
+      testFile: 'tests/snap.spec.ts',
+      baseUrl: 'http://localhost:3000',
+    });
+    expect(out).toMatchSnapshot();
+  });
+});

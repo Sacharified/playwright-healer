@@ -17,12 +17,29 @@ import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { NdjsonRecord } from './types.js';
+import type { NdjsonRecord, HealEvent } from './types.js';
 
 const STATE_BRANCH = 'playwright-healer-state';
 const BOT_EMAIL = 'playwright-healer-bot@users.noreply.github.com';
 const BOT_NAME = 'playwright-healer-bot';
 const MAX_RETRIES = 5;
+
+/**
+ * Returns inline `git -c http.extraheader=...` flags injecting HEALER_TOKEN as
+ * basic-auth for github.com requests. Same pattern as actions/checkout and
+ * fix-applier.ts CRACK-2 fix — token never lands in ~/.gitconfig or
+ * .git/config; per-invocation argv only. PAT was registered with
+ * core.setSecret upstream so any leaked stderr is masked by the runner.
+ *
+ * Returns [] when HEALER_TOKEN is unset/empty (local dev, file:// remotes, and
+ * public repos all work without auth).
+ */
+function gitCredentialFlags(): string[] {
+  const token = process.env['HEALER_TOKEN'] ?? '';
+  if (!token) return [];
+  const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
+  return ['-c', `http.https://github.com/.extraheader=Authorization: basic ${auth}`];
+}
 
 /**
  * Returns the relative NDJSON path for today's date in UTC.
@@ -35,6 +52,115 @@ export function todayPath(): string {
   const m = String(now.getUTCMonth() + 1).padStart(2, '0');
   const d = String(now.getUTCDate()).padStart(2, '0');
   return `runs/${y}/${m}/${d}.ndjson`;
+}
+
+/**
+ * Heal-event NDJSON path for today (Phase 04, Pitfall 7).
+ * Sibling of todayPath() — runs/YYYY/MM/DD-heals.ndjson.
+ */
+export function todayHealPath(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  return `runs/${y}/${m}/${d}-heals.ndjson`;
+}
+
+/**
+ * Append a single HealEvent to today's runs/YYYY/MM/DD-heals.ndjson on the
+ * state branch. SAME retry-loop and durability invariants as appendRecord:
+ *   - Pitfall A: every git call uses { cwd: worktreePath }
+ *   - Pitfall B: atomic write via .tmp rename
+ *   - Pitfall C: --force-with-lease=playwright-healer-state (ref-qualified)
+ *   - Sentinel: [skip-healer] in every commit message (Guard 2 prerequisite)
+ *   - Exhaustion: core.warning, no throw (Assumption A1)
+ *
+ * DO NOT abstract a shared helper with appendRecord — duplicating preserves
+ * the existing test surface for appendRecord while keeping the heal path
+ * independently auditable.
+ */
+export async function appendHealEvent(
+  event: HealEvent,
+  worktreePath: string,
+): Promise<void> {
+  const ndjsonPath = todayHealPath();
+  const absPath = path.join(worktreePath, ndjsonPath);
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // 1. Sync to remote state before every attempt
+    await getExecOutput(
+      'git',
+      [...gitCredentialFlags(), 'fetch', 'origin', STATE_BRANCH],
+      { cwd: worktreePath },
+    );
+    await getExecOutput(
+      'git',
+      ['reset', '--hard', `origin/${STATE_BRANCH}`],
+      { cwd: worktreePath },
+    );
+
+    // 2. Ensure NDJSON directory exists
+    fs.mkdirSync(path.join(worktreePath, path.dirname(ndjsonPath)), { recursive: true });
+
+    // 3. Atomic append (temp rename prevents partial-write corruption — Pitfall B)
+    const existing = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : '';
+    const appended = existing + JSON.stringify(event) + '\n';
+    const tmpPath = `${absPath}.tmp`;
+    fs.writeFileSync(tmpPath, appended, 'utf8');
+    fs.renameSync(tmpPath, absPath);
+
+    // 4. Stage and commit in the worktree (never in process.cwd())
+    await getExecOutput(
+      'git',
+      ['add', ndjsonPath],
+      { cwd: worktreePath },
+    );
+    await getExecOutput(
+      'git',
+      [
+        '-c', `user.email=${BOT_EMAIL}`,
+        '-c', `user.name=${BOT_NAME}`,
+        'commit', '-m', `heal: ${event.testId} ${event.outcome} [skip-healer]`,
+      ],
+      { cwd: worktreePath },
+    );
+
+    // 5. Push with ref-qualified lease (Pitfall C: prevents stale FETCH_HEAD false-positive)
+    //    Form: --force-with-lease=playwright-healer-state (NOT bare --force-with-lease)
+    const push = await getExecOutput(
+      'git',
+      [
+        ...gitCredentialFlags(),
+        'push',
+        `--force-with-lease=${STATE_BRANCH}`,
+        'origin',
+        STATE_BRANCH,
+      ],
+      { cwd: worktreePath, ignoreReturnCode: true },
+    );
+
+    if (push.exitCode === 0) return;
+
+    // Push rejected — another concurrent writer pushed first
+    // Exponential backoff + jitter before retry
+    const delayMs = 100 * Math.pow(2, attempt) + Math.floor(Math.random() * 100);
+    core.warning(
+      `State branch heal-event push rejected (attempt ${attempt + 1}/${MAX_RETRIES}). Retry in ${delayMs}ms.`,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+    // Undo local commit before retry (fetch + reset at top of loop will re-sync anyway)
+    await getExecOutput(
+      'git',
+      ['reset', '--soft', 'HEAD~1'],
+      { cwd: worktreePath },
+    );
+  }
+
+  // All retry attempts exhausted — non-fatal (analytics gap, not a security issue)
+  core.warning(
+    `State branch: all ${MAX_RETRIES} heal-event push attempts rejected. Heal record for ${event.testId} not persisted.`,
+  );
 }
 
 /**
@@ -66,7 +192,7 @@ export async function bootstrapOrGetWorktree(
   // Check whether the state branch already exists on the remote
   const lsRemote = await getExecOutput(
     'git',
-    ['ls-remote', '--exit-code', 'origin', `refs/heads/${STATE_BRANCH}`],
+    [...gitCredentialFlags(), 'ls-remote', '--exit-code', 'origin', `refs/heads/${STATE_BRANCH}`],
     { cwd: primaryCwd, ignoreReturnCode: true },
   );
 
@@ -74,7 +200,7 @@ export async function bootstrapOrGetWorktree(
     // Branch exists — use git worktree add (shares .git with primary workspace)
     await getExecOutput(
       'git',
-      ['fetch', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'fetch', 'origin', STATE_BRANCH],
       { cwd: primaryCwd },
     );
     await getExecOutput(
@@ -131,7 +257,7 @@ export async function bootstrapOrGetWorktree(
     // Push — if a concurrent bootstrapper wins, our push fails (non-zero exit)
     const push = await getExecOutput(
       'git',
-      ['push', '-u', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'push', '-u', 'origin', STATE_BRANCH],
       { cwd: worktreePath, ignoreReturnCode: true },
     );
 
@@ -175,7 +301,7 @@ export async function appendRecord(
     // 1. Sync to remote state before every attempt
     await getExecOutput(
       'git',
-      ['fetch', 'origin', STATE_BRANCH],
+      [...gitCredentialFlags(), 'fetch', 'origin', STATE_BRANCH],
       { cwd: worktreePath },
     );
     await getExecOutput(
@@ -215,6 +341,7 @@ export async function appendRecord(
     const push = await getExecOutput(
       'git',
       [
+        ...gitCredentialFlags(),
         'push',
         `--force-with-lease=${STATE_BRANCH}`,
         'origin',

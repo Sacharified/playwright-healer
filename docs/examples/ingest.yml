@@ -1,0 +1,64 @@
+# Ingest snippet — paste into your existing CI workflow
+#
+# This is NOT a complete workflow file. Copy these steps into the job that
+# runs your Playwright tests. Place the ingest step AFTER your test run and
+# AFTER uploading the report artifact (see the upload-artifact step below).
+#
+# The healer workflow is dispatched automatically when the flake-rate or
+# slow-regression threshold is breached. Manual dispatch via the Actions tab
+# is also available at any time.
+#
+# Required secrets:
+#   HEALER_PAT — GitHub PAT with repo scope (classic) or
+#                Contents:write + Pull requests:write + Actions:write (fine-grained)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified at execution
+        with:
+          persist-credentials: false
+
+      # ── Your existing test steps go here ──
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Playwright tests
+        run: npx playwright test --reporter=json
+        # Replace the command above with your actual test command.
+        # Ensure your playwright.config.ts writes the JSON report to
+        # the path you pass to report_path below (default: test-results/results.json).
+
+      # ── REQUIRED: Upload the report artifact BEFORE calling ingest ──
+      # playwright-healer reads this artifact to parse the test results.
+      # If this step is missing, ingest will not find any results to process.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      # ── Ingest step: append per-run stats and check thresholds ──
+      - name: Run playwright-healer (ingest)
+        if: always()
+        uses: Sacharified/playwright-healer@v1
+        with:
+          mode: ingest
+          report_path: ./playwright-report/   # adjust to match your upload-artifact path above
+          healer_token: ${{ secrets.HEALER_PAT }}
+          github_token: ${{ github.token }}
+          flake_rate_threshold: '0.20'   # dispatch healer when a test fails >20% of runs
+          flake_window_days: '14'        # evaluate flake rate over a 14-day rolling window
+          # Optional: slow regression detection
+          # slow_regression_pct: '1.5'   # trigger when p95 duration grows >50%
+          # Optional: enable automatic dispatch when threshold is breached
+          # enable_auto_dispatch: 'true'  # default false — opt in explicitly
+          # healer_workflow_file: 'playwright-healer.yml'  # filename of your heal workflow

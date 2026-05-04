@@ -19,4 +19,5 @@ export type FailureMode =
   | 'no-fix-proposable'
   | 'diff-lint-blocked'
   | 'validation-failed'
-  | 'deterministic-failure';
+  | 'deterministic-failure'
+  | 'cap-exceeded';   // Phase 04 — SEC-05 Guard 3 backstop

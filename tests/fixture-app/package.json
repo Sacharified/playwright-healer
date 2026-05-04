@@ -2,7 +2,7 @@
   "name": "playwright-healer-fixture",
   "private": true,
   "version": "0.0.0",
-  "description": "Self-contained broken Playwright fixture used by the e2e-heal-self workflow",
+  "description": "In-repo fixture app for playwright-healer self-test (tests/fixture-app/)",
   "scripts": {
     "start": "http-server -p 8080 -c-1 -s",
     "test": "playwright test"

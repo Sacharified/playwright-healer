@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: ready_to_plan
-stopped_at: Completed 03.1-03-PLAN.md (8 dispatch iterations; PR Sacharified/playwright-healer-test#1 with fixture-ci.yml success; total Gemini cost $0.0382 USD; first end-to-end heal demo landed)
-last_updated: "2026-04-30T00:35:00.000Z"
-last_activity: 2026-04-29 -- Phase 03.1 complete; first heal end-to-end demo landed
+stopped_at: "Completed 05-03-PLAN.md: UAT verification plan — all SC pass, SC#2 live deferred to Phase 6"
+last_updated: "2026-05-02T20:53:03.906Z"
+last_activity: 2026-05-02
 progress:
   total_phases: 10
-  completed_phases: 7
-  total_plans: 33
-  completed_plans: 33
-  percent: 70
+  completed_phases: 9
+  total_plans: 41
+  completed_plans: 43
+  percent: 90
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** A flaky Playwright test should result in a reviewable PR (or a structured issue) without a human reading logs.
-**Current focus:** Phase 03.1 — first-heal-end-to-end-demo
+**Current focus:** Phase 05 — auto-merge
 
 ## Current Position
 
-Phase: 4
+Phase: 6
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-04-29
+Last activity: 2026-05-02
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 12
+- Total plans completed: 20
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -48,6 +48,8 @@ Progress: [██████████] 100%
 | 01.2 | 1 | - | - |
 | 01.3 | 1 | - | - |
 | 03.1 | 3 | - | - |
+| 04 | 5 | - | - |
+| 05 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -63,6 +65,13 @@ Progress: [██████████] 100%
 | Phase 01-security-scaffold-composite-packaging P06 | 5m | 1 tasks | 1 files |
 | Phase 01.2 P01 | 3min | 3 tasks | 2 files |
 | Phase 01.3 P01 | 15min | 4 tasks | 5 files |
+| Phase 04-auto-dispatch-full-fix-classes-deduplication P02 | 8 | 3 tasks | 17 files |
+| Phase 04-auto-dispatch-full-fix-classes-deduplication P04 | ~35m | 3 tasks | 15 files |
+| Phase 04 P04 | ~50m | 3 tasks | 17 files |
+| Phase 04-auto-dispatch-full-fix-classes-deduplication P05 | ~20m (automated tasks only; UAT pending) | 3 tasks | 3 files |
+| Phase 05-auto-merge P01 | 6m | 3 tasks | 4 files |
+| Phase 05-auto-merge P02 | 70m | 4 tasks | 4 files |
+| Phase 05-auto-merge P03 | 5m | 5 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -103,6 +112,27 @@ Recent decisions affecting current work:
 - Phase 03.1 fix-applier scope-leak: prior `git apply --3way + git add -A` swept untracked files (.healer/, package-lock.json) into commit; replaced with atomic `git apply --3way --index` so only patched files are staged
 - Phase 03.1 fix-applier push: original `git push -u origin <branch>` rejected on re-dispatch (deterministic branch name reuse); --force-with-lease rejected with stale-info on shallow clones; final answer is plain --force given the playwright-healer/* namespace is bot-exclusive
 - Phase 03.1 Rule 3 auto-fix: src/index.ts was missing `core.getInput()` calls for the three skip-* flags (Plan 01 added schema fields, Plan 02 added action.yml inputs + env vars, but src/index.ts wire-through was missed); fixed in commit 10c8949
+- FIX-07 cascade order: adapter.ts FIRST, parseFinalText adapters follow — TypeScript enforces this at compile time
+- classifyFixClass uses static module-scope regex literals only — input never reaches RegExp constructor (T-04-04 mitigation)
+- CFG-04 disable emits core.warning (not silent skip) — surfaces operator-actionable signal in step summary
+- Phase 04 Plan 04: IssueOpts widened to include testFile + stateWorktreePath — enables full testFile::testTitle cap key for issue-opened heal events, matching pr-opened path (no cap undercount)
+- Phase 04 Plan 04: appendHealEvent NOT abstracted from appendRecord — deliberate duplication for independent auditability per Pitfall 7 guidance
+- Phase 04 Plan 04: countHealsForTest uses synchronous fs I/O — walks ≤ flakeWindowDays files (<1KB each); async complexity not justified
+- Phase 04 Plan 04: Guard 3 bootstrap failure non-fatal — blocking all heals on state-branch error worse than single cap-bypass
+- Phase 04 Plan 04: security-lint Check 5 excludes itself via --exclude=security-lint.yml to avoid self-referential false positive from grep command string
+- Worktree leak fix: Step 1.5 merged into outer try-block so outer finally always runs removeWorktree on all exit paths including cap-hit return
+- concurrencyKey default sentinel in e2e-heal-self.yml: required:true with constant default 'manual-broken-selector-default' — satisfies DET-07 schema while keeping manual hand-dispatch workable
+- cancel-in-progress: false in concurrency block — queue not cancel (CONTEXT D-03: preserve both runs' detection evidence if they raced)
+- skip_post_fix_validation commented out not deleted — one-line revert path for demo rollback; Phase 04 re-engages validation gate
+- enableAutoMerge uses strict === 'true' transform (default-OFF per CONTEXT D-01 / MRG-01)
+- autoMergePassRate default 1.0 stricter than rerunPassRate 0.9 (CONTEXT D-01 / MRG-02)
+- autoMergeFixClasses stays string at schema layer; split-to-array deferred to Plan 02 gate call site
+- evaluateAutoMerge four-condition gate (pass_rate/fix_class/scope/config_files) implemented as pure function in pr-writer.ts (D-04)
+- enableAutoMerge D-05 soft-fail: GraphqlResponseError + generic catch return errorMessage object, heal exit 0
+- renderAutoMergeBand always renders on PR creation regardless of enableAutoMerge flag (MRG-04/D-09)
+- index.test.ts baseConfig extended with Phase 05 fields to prevent runtime undefined crash (Rule 1 auto-fix)
+- SC#2 live happy-path deferred to Phase 6 — Sacharified/playwright-healer-test is GitHub Free private; allow_auto_merge and branch protection require GitHub Pro; unit-level IN2 is plan-accepted primary evidence
+- sc1-healer-phase5.yml committed to action repo planning dir so Phase 6 has stable fixture runbook starting point regardless of fixture-repo changes
 
 ### Pending Todos
 
@@ -131,8 +161,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-27T22:14:02.706Z
-Stopped at: Completed 01.3-01-PLAN.md (all 7 jobs green after Option C plan-correction; TEST-01 satisfied)
+Last session: 2026-05-02T20:53:03.903Z
+Stopped at: Completed 05-03-PLAN.md: UAT verification plan — all SC pass, SC#2 live deferred to Phase 6
 Resume file: None
 
-**Planned Phase:** 01.3 (Fix pre-existing phase1-self-test.yml test-design bugs (INSERTED)) — 1 plans — 2026-04-27T20:56:51.405Z
+**Planned Phase:** 05 (auto-merge) — 3 plans — 2026-05-02T16:45:55.582Z

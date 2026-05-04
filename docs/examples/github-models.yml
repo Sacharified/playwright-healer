@@ -1,0 +1,101 @@
+# playwright-healer / heal (GitHub Models)
+#
+# Copy this file into your repo as .github/workflows/playwright-healer.yml
+# (or any name — update healer_workflow_file in your ingest step to match).
+#
+# This workflow is dispatched automatically by playwright-healer's ingest
+# step when a flake-rate or slow-regression threshold is breached. You can
+# also trigger it manually from the Actions tab for ad-hoc healing.
+#
+# GitHub Models (gpt-4.1) is the alternative provider:
+#   - Single PAT covers both API auth and PR creation (no separate API key needed)
+#   - Free tier via GitHub Models (https://github.com/marketplace/models)
+#   - 128K context window — sufficient for most test suites; use Gemini for large suites
+#
+# Required secrets:
+#   HEALER_PAT — GitHub PAT with models:read + repo scope (classic) or
+#                models:read + Contents:write + Pull requests:write + Issues:write (fine-grained)
+#
+# The HEALER_PAT serves double duty here:
+#   - As api_key: authenticates against GitHub Models (models:read scope)
+#   - As healer_token: opens PRs and issues (repo scope)
+# Fine-grained PAT needs: models:read (Models), Contents:write + Pull requests:write (repo)
+# No separate GEMINI_API_KEY or ANTHROPIC_API_KEY needed.
+
+name: playwright-healer / heal (GitHub Models)
+
+on:
+  workflow_dispatch:
+    inputs:
+      testFile:
+        description: 'Test file path (relative to repo root)'
+        required: false
+        default: ''
+      testTitle:
+        description: 'Test title to heal'
+        required: false
+        default: ''
+      fixClassHint:
+        description: 'Fix class hint: selectors | waits | assertions | slow'
+        required: false
+        default: ''
+      commitSha:
+        description: 'Commit SHA to heal against (blank → HEAD of default branch)'
+        required: false
+        default: ''
+      # The four below are populated automatically by ingest auto-dispatch.
+      # They are optional for manual maintainer dispatch.
+      flakeRate:
+        description: 'Recent flake rate (0.0–1.0). Optional for manual dispatch.'
+        required: false
+        default: ''
+      windowDays:
+        description: 'Rolling window in days. Optional for manual dispatch.'
+        required: false
+        default: ''
+      runCount:
+        description: 'Recent run count. Optional for manual dispatch.'
+        required: false
+        default: ''
+      concurrencyKey:
+        description: 'Concurrency key (set automatically by ingest dispatch)'
+        required: false
+        default: 'manual-dispatch'
+      enable_auto_merge:
+        description: 'Enable auto-merge gate for this heal run'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: playwright-healer-${{ github.repository }}-${{ github.event.inputs.concurrencyKey || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  heal:
+    name: Heal broken test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 — re-verified at execution
+        with:
+          persist-credentials: false
+
+      - name: Run playwright-healer (heal mode)
+        uses: Sacharified/playwright-healer@v1
+        with:
+          mode: heal
+          provider: github
+          model: openai/gpt-4.1
+          api_key: ${{ secrets.HEALER_PAT }}     # same PAT as healer_token — covers models:read scope
+          healer_token: ${{ secrets.HEALER_PAT }}
+          commit_sha: ${{ inputs.commitSha || github.sha }}
+          base_url: http://localhost:3000            # replace with your app URL
+          setup_command: 'npm ci'                    # replace with your app setup command
+          start_command: 'npm start'                 # replace with your app start command
+          test_command: 'npx playwright test ${{ inputs.testFile }}'
+          max_budget_usd: '2.00'
+          max_turns: '15'
+          enable_auto_merge: ${{ inputs.enable_auto_merge || 'false' }}
