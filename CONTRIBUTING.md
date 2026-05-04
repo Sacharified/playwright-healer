@@ -20,11 +20,13 @@ This project uses the GSD (Get Shit Done) planning workflow. Planning docs live 
 
 ## CI gate
 
-Every PR triggers `security-lint.yml`. This workflow checks:
+Every PR triggers `security-lint.yml`. The workflow runs five checks; the ones most relevant to external contributors are:
 
 - No `pull_request_target` triggers in any workflow file
 - All `actions/checkout` steps have `persist-credentials: false`
-- All `actions/checkout` refs are SHA-pinned
+- No HTTP clients (axios/fetch/got/node-fetch) imported in `src/**`
+
+SHA-pinning of action refs is a project convention but is not currently enforced by security-lint. Please continue to SHA-pin actions in any new workflows you add.
 
 PRs that fail security-lint will not be merged.
 
