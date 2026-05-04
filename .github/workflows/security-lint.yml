@@ -153,6 +153,7 @@ jobs:
                 allowedOriginTemplate: ['<baseUrl>', 'http://localhost:*'],
                 allowedTools: [...m.ALLOWED_TOOLS].sort(),
                 forbiddenWorkflowTriggers: [...m.FORBIDDEN_WORKFLOW_TRIGGERS].sort(),
+                mcpPlaywrightToolPrefix: m.MCP_PLAYWRIGHT_TOOL_PREFIX,
               };
               const sortKeys = (o) => Array.isArray(o)
                 ? [...o].sort()
