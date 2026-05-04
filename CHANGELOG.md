@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-04
+
 ### Added
 
 **Core pipeline**
@@ -78,4 +80,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **v2 trace-aware confidence bands**: deferred (TRC-03); requires Playwright trace
   analysis not yet implemented.
 
-[Unreleased]: https://github.com/Sacharified/playwright-healer/compare/HEAD...HEAD
+[Unreleased]: https://github.com/Sacharified/playwright-healer/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Sacharified/playwright-healer/releases/tag/v0.1.0
