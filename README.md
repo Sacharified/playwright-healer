@@ -168,7 +168,7 @@ with the following scopes.
 | Contents | Write | Push the fix branch, open PR |
 | Pull requests | Write | Create and update PRs |
 | Issues | Write | Open fallback diagnosis issues |
-| Actions | Read | Trigger workflow dispatch |
+| Actions | Write | Trigger workflow dispatch |
 
 **Classic PAT:** `repo` scope (covers all of the above for a single repo).
 
