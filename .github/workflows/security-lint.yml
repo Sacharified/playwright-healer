@@ -176,20 +176,26 @@ jobs:
 
       # ──────────────────────────────────────────────────────────────────
       # CHECK 4 — SEC-07 (T-1-04): No HTTP client call-sites in src/**
-      # Pattern 12. Phase 1 allowlist is EMPTY. Phases 2/3 will extend the allowlist.
+      # Pattern 12. Allowlist:
+      #   - src/healer/app-supervisor.ts — waitForReady() polls the consumer's
+      #     baseUrl with fetch() to gate test execution on app startup. The
+      #     target host is the consumer's own app, not external; no exfiltration
+      #     surface. Reviewed under D-14 v0.1.0.
       # ──────────────────────────────────────────────────────────────────
       - name: 'Check 4: No HTTP clients in src/** (SEC-07)'
         shell: bash
         run: |
           set -euo pipefail
           PATTERNS='fetch\(|http\.request\(|https\.request\(|axios|got\(|node-fetch|undici'
-          MATCHES=$(git grep -nE "$PATTERNS" -- 'src/*.ts' 'src/**/*.ts' || true)
+          MATCHES=$(git grep -nE "$PATTERNS" -- \
+            'src/*.ts' 'src/**/*.ts' \
+            ':!src/healer/app-supervisor.ts' || true)
           if [ -n "$MATCHES" ]; then
-            echo "::error::SEC-07 violation: HTTP client call-site found in src/ (Phase 1 allowlist is empty)"
+            echo "::error::SEC-07 violation: HTTP client call-site found in src/ (outside allowlist)"
             echo "$MATCHES" | sed 's/^/  /'
             exit 1
           fi
-          echo "OK: no HTTP client call-sites in src/"
+          echo "OK: no HTTP client call-sites in src/ (outside allowlist)"
 
       # ──────────────────────────────────────────────────────────────────
       # CHECK 5 — WR-01 regression (no global gitconfig PAT writes)
