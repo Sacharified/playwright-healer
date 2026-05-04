@@ -18,6 +18,7 @@
 
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import * as path from 'node:path';
 import type { Config } from '../shared/config.js';
 import { DEFAULT_MODELS, DEFAULT_ENDPOINTS } from '../shared/config.js';
 import { ALLOWED_TOOLS } from '../shared/security-contract.js';
@@ -143,7 +144,14 @@ export async function run(config: Config): Promise<void> {
   const repo = github.context.repo.repo;
   const triggeringRunUrl =
     `${github.context.serverUrl ?? 'https://github.com'}/${owner}/${repo}/actions/runs/${github.context.runId}`;
-  const cwd = process.env['GITHUB_WORKSPACE'] ?? process.cwd();
+  // workspace = consumer's repo root. cwd = workspace + working_directory
+  // (default ''). Healer file ops (bundleContext, validator, fix-applier)
+  // all run from cwd, so monorepos with the app under e.g. `frontend/` can
+  // set working_directory: 'frontend' and have test paths like
+  // `pokedex.spec.ts` resolve correctly. State branch ops still use the
+  // workspace root (state branch is repo-wide, not subdir-scoped).
+  const workspace = process.env['GITHUB_WORKSPACE'] ?? process.cwd();
+  const cwd = path.resolve(workspace, config.workingDirectory);
   // Default branch detection: action.yml passes it via env if available; fallback to 'main'.
   const defaultBranch = process.env['HEALER_DEFAULT_BRANCH'] ?? 'main';
 
@@ -160,7 +168,9 @@ export async function run(config: Config): Promise<void> {
     // stateWorktreePath stays null and the pipeline continues without the
     // Guard 3 backstop (D-04 ingest pre-check is the cheap layer).
     try {
-      stateWorktreePath = await bootstrapOrGetWorktree(remoteUrl, cwd);
+      // State branch ops use workspace root, not the working_directory subdir —
+      // the state branch is repo-wide. Other ops in this file use `cwd`.
+      stateWorktreePath = await bootstrapOrGetWorktree(remoteUrl, workspace);
       const testId = `${payload.testFile}::${payload.testTitle}`;
       const guard3 = shouldSkipHeal(testId, config, stateWorktreePath);
       if (guard3.skip) {

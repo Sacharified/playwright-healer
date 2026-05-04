@@ -100,6 +100,7 @@ import * as core from '@actions/core';
 const baseConfig: Config = {
   mode: 'heal',
   setupCommand: '', startCommand: '', testCommand: '', baseUrl: 'http://localhost:3000',
+  workingDirectory: '',
   apiKey: 'test', healerToken: 'pat', githubToken: 'gh',
   provider: 'gemini', model: '', apiEndpoint: '',
   reportPath: 'r', flakeRateThreshold: 0.2, flakeWindowDays: 7, slowRegressionPct: 1.5,
@@ -362,6 +363,32 @@ describe('run() — HI-01 cwd threading', () => {
       expect(mockValidate).toHaveBeenCalledTimes(2);
       expect(mockValidate.mock.calls[0][3]).toBe('/consumer/workspace');
       expect(mockValidate.mock.calls[1][3]).toBe('/consumer/workspace');
+    } finally {
+      if (originalWs === undefined) {
+        delete process.env['GITHUB_WORKSPACE'];
+      } else {
+        process.env['GITHUB_WORKSPACE'] = originalWs;
+      }
+    }
+  });
+
+  it('appends working_directory to GITHUB_WORKSPACE for healer file ops', async () => {
+    const originalWs = process.env['GITHUB_WORKSPACE'];
+    process.env['GITHUB_WORKSPACE'] = '/consumer/workspace';
+    try {
+      mockValidate
+        .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
+        .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
+      mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
+      const subdirConfig = { ...baseConfig, workingDirectory: 'frontend' };
+      await run(subdirConfig);
+      // bundleContext, validate, and fix-applier should all receive the
+      // workspace+subdir path; the state-branch ops keep using workspace root.
+      expect(mockBundleContext).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: '/consumer/workspace/frontend' }),
+      );
+      expect(mockValidate.mock.calls[0][3]).toBe('/consumer/workspace/frontend');
+      expect(mockValidate.mock.calls[1][3]).toBe('/consumer/workspace/frontend');
     } finally {
       if (originalWs === undefined) {
         delete process.env['GITHUB_WORKSPACE'];

@@ -41,6 +41,17 @@ inputs:
     description: 'Base URL of the application under test'
     required: false
     default: ''
+  working_directory:
+    description: |
+      Subdirectory of the consumer's repo where the application + tests live,
+      relative to GITHUB_WORKSPACE. Set this when your test_command starts with
+      `cd <subdir> && ...` (e.g. monorepos with the app under `frontend/`).
+      The healer reads test files, runs validation reruns, and applies fixes
+      from this directory. setup_command / start_command / test_command keep
+      their existing semantics — they still run from GITHUB_WORKSPACE and can
+      use `cd` themselves. Default: '' (workspace root).
+    required: false
+    default: ''
   provider:
     description: 'Inference provider: anthropic | gemini | github | ollama'
     required: false
@@ -270,6 +281,7 @@ runs:
         INPUT_START_COMMAND: ${{ inputs.start_command }}
         INPUT_TEST_COMMAND: ${{ inputs.test_command }}
         INPUT_BASE_URL: ${{ inputs.base_url }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working_directory }}
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_API_ENDPOINT: ${{ inputs.api_endpoint }}

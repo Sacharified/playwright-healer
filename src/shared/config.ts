@@ -39,6 +39,12 @@ export function getInputSchema() {
     startCommand:    z.string().default(''),
     testCommand:     z.string().default(''),
     baseUrl:         z.string().default(''),
+    // Subdirectory of GITHUB_WORKSPACE where the app/tests live. Healer file
+    // ops (bundleContext, validator playwright run, fix-applier git apply)
+    // run with cwd = path.resolve(GITHUB_WORKSPACE, workingDirectory).
+    // setup/start/test_command are NOT affected — they still run from
+    // workspace root and can use their own `cd` prefixes.
+    workingDirectory: z.string().default(''),
     apiKey:          z.string().default(''),
     healerToken:     z.string().min(1, { message: 'healer_token is required and must be non-empty' }),
     githubToken:     z.string().min(1, { message: 'github_token is required and must be non-empty' }),

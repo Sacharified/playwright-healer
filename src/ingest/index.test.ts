@@ -131,6 +131,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     startCommand: '',
     testCommand: '',
     baseUrl: '',
+    workingDirectory: '',
     apiKey: 'key',
     healerToken: 'healer-pat',
     githubToken: 'gh-tok',
