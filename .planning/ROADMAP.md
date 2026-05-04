@@ -180,12 +180,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Security pre-flight: .gitleaks.toml allowlist + gitleaks scan + SECURITY.md + CONTRIBUTING.md (PKG-03, DOC-05) — Wave 1
-- [ ] 06-02-PLAN.md — Fixture rename: fixture/ → tests/fixture-app/ + all in-repo + cross-repo reference updates (PKG-04) — Wave 1
-- [ ] 06-03-PLAN.md — Core docs: README (11 sections + Mermaid diagram) + CHANGELOG [Unreleased] + security-lint.yml exclusion update (PKG-05, DOC-01, DOC-03, DOC-04, DOC-05) — Wave 2
-- [ ] 06-04-PLAN.md — docs/ companion files: auto-merge.md + release-process.md + examples/gemini.yml + examples/github-models.yml + examples/ingest.yml (PKG-05, DOC-02) — Wave 2
-- [ ] 06-05-PLAN.md — Self-test promotion: e2e-heal-self.yml → self-test.yml with push/PR/dispatch triggers + playwright-healer-bot actor guard (PKG-04) — Wave 3
-- [ ] 06-06-PLAN.md — Release: pre-flight checklist + CHANGELOG [Unreleased]→[0.1.0] + repo visibility flip CHECKPOINT + v0.1.0 tag + v1 alias + GitHub Release (PKG-03, DOC-05) — Wave 4
+- [x] 06-01-PLAN.md — Security pre-flight: .gitleaks.toml allowlist + gitleaks scan + SECURITY.md + CONTRIBUTING.md (PKG-03, DOC-05) — Wave 1
+- [x] 06-02-PLAN.md — Fixture rename: fixture/ → tests/fixture-app/ + all in-repo + cross-repo reference updates (PKG-04) — Wave 1
+- [x] 06-03-PLAN.md — Core docs: README (11 sections + Mermaid diagram) + CHANGELOG [Unreleased] + security-lint.yml exclusion update (PKG-05, DOC-01, DOC-03, DOC-04, DOC-05) — Wave 2
+- [x] 06-04-PLAN.md — docs/ companion files: auto-merge.md + release-process.md + examples/gemini.yml + examples/github-models.yml + examples/ingest.yml (PKG-05, DOC-02) — Wave 2
+- [x] 06-05-PLAN.md — Self-test promotion: e2e-heal-self.yml → self-test.yml with push/PR/dispatch triggers + playwright-healer-bot actor guard (PKG-04) — Wave 3
+- [x] 06-06-PLAN.md — Release: pre-flight checklist + CHANGELOG [Unreleased]→[0.1.0] + repo visibility flip CHECKPOINT + v0.1.0 tag + v1 alias + GitHub Release (PKG-03, DOC-05) — Wave 4
 
 ## Progress
 
