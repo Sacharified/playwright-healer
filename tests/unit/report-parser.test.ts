@@ -230,3 +230,88 @@ describe('parseReport() — Playwright JSON → NdjsonTestEntry[]', () => {
     expect(loginEntry!.workerIndex).toBe(0);
   });
 });
+
+// ─── filePath rebasing (working_directory + custom rootDir) ──────────────────
+//
+// Real-world bug surfaced by battledex: playwright.config.ts at frontend/, but
+// testDir: 'e2e' makes Playwright collapse rootDir to '/.../frontend/e2e'.
+// Spec.file is then 'pokedex.spec.ts' (rel to rootDir), and the heal pipeline
+// running from cwd=/.../frontend opens '/.../frontend/pokedex.spec.ts' → ENOENT.
+//
+// Fix: rebase spec.file from rootDir-relative to (workspace+working_directory)-
+// relative when pathContext is supplied.
+
+describe('parseReport() — filePath rebasing', () => {
+  function makeReport(rootDir: string, specFile: string) {
+    return {
+      config: { rootDir },
+      stats: { startTime: '2026-05-05T00:00:00Z', duration: 100 },
+      suites: [
+        {
+          title: 'pokedex',
+          file: specFile,
+          specs: [
+            {
+              title: 'renders heading',
+              file: specFile,
+              tests: [{ status: 'unexpected', results: [{ duration: 1, retry: 0 }] }],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('rebases when rootDir is deeper than workspace+working_directory', () => {
+    // Battledex shape: config at frontend/playwright.config.ts, testDir: 'e2e'
+    const r = makeReport(
+      '/home/runner/work/battledex/battledex/frontend/e2e',
+      'pokedex.spec.ts',
+    );
+    const result = parseReport(r, {
+      workspace: '/home/runner/work/battledex/battledex',
+      workingDirectory: 'frontend',
+    });
+    expect(result.entries[0]!.filePath).toBe('e2e/pokedex.spec.ts');
+  });
+
+  it('passes spec.file through unchanged when rootDir equals workspace+working_directory', () => {
+    // Standard shape: rootDir is the same as workspace+wd, spec.file already includes the testDir.
+    const r = makeReport(
+      '/home/runner/work/repo/frontend',
+      'e2e/pokedex.spec.ts',
+    );
+    const result = parseReport(r, {
+      workspace: '/home/runner/work/repo',
+      workingDirectory: 'frontend',
+    });
+    expect(result.entries[0]!.filePath).toBe('e2e/pokedex.spec.ts');
+  });
+
+  it('handles workspace-root projects (working_directory empty)', () => {
+    const r = makeReport('/home/runner/work/repo', 'tests/foo.spec.ts');
+    const result = parseReport(r, {
+      workspace: '/home/runner/work/repo',
+      workingDirectory: '',
+    });
+    expect(result.entries[0]!.filePath).toBe('tests/foo.spec.ts');
+  });
+
+  it('passes through unchanged when pathContext is omitted (back-compat)', () => {
+    const r = makeReport('/repo', 'tests/foo.spec.ts');
+    const result = parseReport(r);
+    expect(result.entries[0]!.filePath).toBe('tests/foo.spec.ts');
+  });
+
+  it('handles absolute spec.file by computing relative to workspace+working_directory', () => {
+    const r = makeReport(
+      '/home/runner/work/repo/frontend/e2e',
+      '/home/runner/work/repo/frontend/e2e/pokedex.spec.ts',
+    );
+    const result = parseReport(r, {
+      workspace: '/home/runner/work/repo',
+      workingDirectory: 'frontend',
+    });
+    expect(result.entries[0]!.filePath).toBe('e2e/pokedex.spec.ts');
+  });
+});

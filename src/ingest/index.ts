@@ -83,7 +83,10 @@ export async function run(config: Config): Promise<void> {
         );
         continue;
       }
-      const parsed = parseReport(rawJson);
+      const parsed = parseReport(rawJson, {
+        workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
+        workingDirectory: config.workingDirectory,
+      });
       if (parsed.reportUnreadable) {
         reportUnreadable = true;
       } else {

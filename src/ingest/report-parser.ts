@@ -9,6 +9,7 @@
 // NOT 'passed' | 'failed' — mapOutcome() converts these to our canonical outcome values.
 
 import { z } from 'zod';
+import * as path from 'node:path';
 import * as core from '@actions/core';
 import type { NdjsonTestEntry } from '../shared/types.js';
 
@@ -42,7 +43,12 @@ function mapOutcome(playwrightStatus: string): Outcome {
  * @param parentTitle - title of the parent suite (empty string at top level)
  * @param entries - accumulator array to push entries into
  */
-function walkSuites(suites: unknown[], parentTitle: string, entries: NdjsonTestEntry[]): void {
+function walkSuites(
+  suites: unknown[],
+  parentTitle: string,
+  entries: NdjsonTestEntry[],
+  rebaseFile: (rawFile: string) => string,
+): void {
   for (const suite of suites) {
     if (!suite || typeof suite !== 'object') continue;
     const s = suite as Record<string, unknown>;
@@ -51,7 +57,7 @@ function walkSuites(suites: unknown[], parentTitle: string, entries: NdjsonTestE
 
     // Recurse into nested suites (pass current suite title as parent for children)
     if (Array.isArray(s['suites'])) {
-      walkSuites(s['suites'] as unknown[], suiteTitle, entries);
+      walkSuites(s['suites'] as unknown[], suiteTitle, entries, rebaseFile);
     }
 
     // Process specs in this suite
@@ -62,7 +68,8 @@ function walkSuites(suites: unknown[], parentTitle: string, entries: NdjsonTestE
         const sp = spec as Record<string, unknown>;
 
         const specTitle = typeof sp['title'] === 'string' ? sp['title'] : '';
-        const filePath = typeof sp['file'] === 'string' ? sp['file'] : '';
+        const rawFile = typeof sp['file'] === 'string' ? sp['file'] : '';
+        const filePath = rebaseFile(rawFile);
 
         // testId: "{filePath}::{suiteTitle} > {specTitle}" or "{filePath}::{specTitle}" if no suite
         const fullTitle = suiteTitle ? `${suiteTitle} > ${specTitle}` : specTitle;
@@ -136,14 +143,37 @@ function walkSuites(suites: unknown[], parentTitle: string, entries: NdjsonTestE
   }
 }
 
+export interface ParseReportPathContext {
+  /** Absolute path to GITHUB_WORKSPACE (consumer's repo root on the runner). */
+  workspace: string;
+  /** Subdirectory of workspace where the healer pipeline runs (cwd of bundleContext, validator, fix-applier). Default: ''. */
+  workingDirectory: string;
+}
+
 /**
  * Parse a Playwright JSON report (already parsed from JSON.parse()) into NdjsonTestEntry[].
  *
  * Returns { entries: [], reportUnreadable: true } on schema failure (ING-03).
  * Returns { entries: [...], reportUnreadable: false } on success.
+ *
+ * filePath rebasing (FIX for monorepo + custom-rootDir setups):
+ * Playwright's JSON reporter emits `spec.file` relative to `config.rootDir`,
+ * which Playwright defaults to the common ancestor of testDirs (often
+ * collapsing to a single testDir like `frontend/e2e/`). The healer runs from
+ * `${workspace}/${workingDirectory}` (e.g., `frontend/`), so spec.file as-is
+ * (`pokedex.spec.ts`) resolves wrong (`frontend/pokedex.spec.ts` ENOENT).
+ *
+ * Algorithm: abs = path.resolve(rootDir, spec.file); then rebase as
+ * path.relative(workspace + workingDirectory, abs). For the common case
+ * where rootDir == workspace + workingDirectory, this is a no-op.
+ *
+ * When pathContext is undefined (test fixtures, callers that haven't been
+ * updated), behavior degrades to the historical "pass spec.file through
+ * verbatim" — ensures backward compatibility.
  */
 export function parseReport(
   rawJson: unknown,
+  pathContext?: ParseReportPathContext,
 ): { entries: NdjsonTestEntry[]; reportUnreadable: boolean } {
   const parsed = ReportSchema.safeParse(rawJson);
 
@@ -155,7 +185,18 @@ export function parseReport(
     return { entries: [], reportUnreadable: true };
   }
 
+  const rootDir = parsed.data.config?.rootDir;
+  const rebaseFile = (rawFile: string): string => {
+    if (!rawFile) return '';
+    if (!pathContext || !rootDir) return rawFile;
+    const abs = path.isAbsolute(rawFile)
+      ? rawFile
+      : path.resolve(rootDir, rawFile);
+    const absWd = path.resolve(pathContext.workspace, pathContext.workingDirectory);
+    return path.relative(absWd, abs);
+  };
+
   const entries: NdjsonTestEntry[] = [];
-  walkSuites(parsed.data.suites, '', entries);
+  walkSuites(parsed.data.suites, '', entries, rebaseFile);
   return { entries, reportUnreadable: false };
 }
