@@ -12,7 +12,7 @@ const {
   mockAssemblePrompt,
   mockSupervisorStop,
   mockRunAgent,
-  mockCreateGeminiAdapter,
+  mockCreateOpenrouterAdapter,
   mockCreateGithubAdapter,
   mockBootstrapOrGetWorktree,
   mockRemoveWorktree,
@@ -20,7 +20,7 @@ const {
   mockShouldSkipHeal,
 } = vi.hoisted(() => {
   const mockRunAgent = vi.fn();
-  const mockCreateGeminiAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
+  const mockCreateOpenrouterAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
   const mockCreateGithubAdapter = vi.fn().mockReturnValue({ runAgent: mockRunAgent });
   return {
     mockBundleContext: vi.fn(),
@@ -32,7 +32,7 @@ const {
     mockAssemblePrompt: vi.fn(),
     mockSupervisorStop: vi.fn(),
     mockRunAgent,
-    mockCreateGeminiAdapter,
+    mockCreateOpenrouterAdapter,
     mockCreateGithubAdapter,
     mockBootstrapOrGetWorktree: vi.fn(),
     mockRemoveWorktree: vi.fn(),
@@ -55,11 +55,8 @@ vi.mock('./app-supervisor.js', () => ({
   waitForReady: vi.fn(),
   readPidFile: vi.fn(),
 }));
-vi.mock('./adapters/gemini.js', () => ({ createGeminiAdapter: mockCreateGeminiAdapter }));
+vi.mock('./adapters/openrouter.js', () => ({ createOpenrouterAdapter: mockCreateOpenrouterAdapter }));
 vi.mock('./adapters/github.js', () => ({ createGithubAdapter: mockCreateGithubAdapter }));
-vi.mock('./adapters/anthropic.js', () => ({
-  anthropicAdapter: { runAgent: vi.fn().mockRejectedValue(new Error('anthropic adapter not implemented in Phase 3')) },
-}));
 vi.mock('./adapters/ollama.js', () => ({
   ollamaAdapter: { runAgent: vi.fn().mockRejectedValue(new Error('ollama adapter not implemented in Phase 3')) },
 }));
@@ -104,7 +101,7 @@ const baseConfig: Config = {
   botEmail: '41898282+github-actions[bot]@users.noreply.github.com',
   botName: 'github-actions[bot]',
   apiKey: 'test', healerToken: 'pat', githubToken: 'gh',
-  provider: 'gemini', model: '', apiEndpoint: '',
+  provider: 'openrouter', model: '', apiEndpoint: '',
   reportPath: 'r', flakeRateThreshold: 0.2, flakeWindowDays: 7, slowRegressionPct: 1.5,
   minRunsForDetection: 10,
   rerunCount: 10, rerunPassRate: 0.9, maxBudgetUsd: 2.0, maxTurns: 30,
@@ -156,7 +153,7 @@ beforeEach(() => {
   mockOpenPr.mockResolvedValue('https://github.com/acme/repo/pull/1');
   mockOpenIssue.mockResolvedValue('https://github.com/acme/repo/issues/1');
   // Re-apply mockReturnValue since clearAllMocks clears implementations
-  mockCreateGeminiAdapter.mockReturnValue({ runAgent: mockRunAgent });
+  mockCreateOpenrouterAdapter.mockReturnValue({ runAgent: mockRunAgent });
   mockCreateGithubAdapter.mockReturnValue({ runAgent: mockRunAgent });
   // Phase 04: state-branch + loop-guard defaults (Guard 3 below-cap by default)
   mockBootstrapOrGetWorktree.mockResolvedValue('/tmp/healer-state-worktree');
@@ -288,16 +285,6 @@ describe('run() — HEA-06 inner cleanup', () => {
 });
 
 describe('run() — provider switch (D-01)', () => {
-  it('config.provider=anthropic → stub error routes to no-fix-proposable issue (HI-03)', async () => {
-    mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
-    await run({ ...baseConfig, provider: 'anthropic' });  // no longer throws
-    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
-      failureMode: 'no-fix-proposable',
-    }));
-    expect(mockSetFailed).toHaveBeenCalledWith(expect.stringMatching(/anthropic adapter not implemented/));
-    expect(mockOpenPr).not.toHaveBeenCalled();
-  });
-
   it('config.provider=ollama → stub error routes to no-fix-proposable issue (HI-03)', async () => {
     mockValidate.mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] });
     await run({ ...baseConfig, provider: 'ollama' });  // no longer throws
@@ -307,14 +294,18 @@ describe('run() — provider switch (D-01)', () => {
     expect(mockSetFailed).toHaveBeenCalledWith(expect.stringMatching(/ollama adapter not implemented/));
   });
 
-  it('config.provider=gemini → createGeminiAdapter is called with config values', async () => {
+  it('config.provider=openrouter → createOpenrouterAdapter is called with config values + default endpoint', async () => {
     mockValidate
       .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
       .mockResolvedValueOnce({ passed: 10, total: 10, passRate: 1.0, perRun: [] });
     mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal));
     await run(baseConfig);
-    expect(mockCreateGeminiAdapter).toHaveBeenCalledWith(expect.objectContaining({
-      apiKey: 'test', maxTurns: 30, maxBudgetUsd: 2.0, baseUrl: 'http://localhost:3000',
+    expect(mockCreateOpenrouterAdapter).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'test',
+      maxTurns: 30,
+      maxBudgetUsd: 2.0,
+      baseUrl: 'http://localhost:3000',
+      endpoint: 'https://openrouter.ai/api/v1',
     }));
   });
 

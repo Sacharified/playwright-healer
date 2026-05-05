@@ -138,7 +138,7 @@ describe('config — Phase 05 no-regression: apiKey superRefine', () => {
       healerToken: 'tok-x',
       githubToken: 'ghtok-y',
       apiKey: '',
-      provider: 'anthropic',
+      provider: 'openrouter',
     });
     expect(result.success).toBe(false);
     if (!result.success) {

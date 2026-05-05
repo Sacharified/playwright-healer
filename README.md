@@ -21,9 +21,11 @@ Adopt playwright-healer in one PR by following these four steps.
 
 ### Step 1 — Copy the healer workflow
 
-Copy [`docs/examples/gemini.yml`](docs/examples/gemini.yml) (Gemini 2.5 Flash, free tier,
-recommended) or [`docs/examples/github-models.yml`](docs/examples/github-models.yml) (GitHub
-Models gpt-4.1, single-PAT setup) into your repo as `.github/workflows/playwright-healer.yml`.
+Copy [`docs/examples/openrouter.yml`](docs/examples/openrouter.yml) (OpenRouter — recommended;
+one OpenAI-compatible endpoint fronts Anthropic, Google, OpenAI, Meta, and ~30 other model
+providers) or [`docs/examples/github-models.yml`](docs/examples/github-models.yml) (GitHub
+Models gpt-4.1 free tier, single-PAT setup) into your repo as
+`.github/workflows/playwright-healer.yml`.
 
 ### Step 2 — Add the ingest snippet to your existing CI
 
@@ -46,7 +48,7 @@ your `upload-artifact` step and appends per-run stats to a dedicated state branc
 
 | Secret | Used for |
 |--------|---------|
-| `GEMINI_API_KEY` | Gemini provider (Google AI Studio — free tier) |
+| `OPENROUTER_API_KEY` | OpenRouter API key — covers Anthropic, Google, OpenAI, Meta, and other upstream providers via one endpoint |
 | `HEALER_PAT` | PAT for PR creation and workflow dispatch (see [Token scopes](#token-scopes--why-githubtoken-doesnt-work)) |
 
 For GitHub Models: only `HEALER_PAT` is needed — it covers both `api_key` and `healer_token`.
@@ -56,6 +58,77 @@ For GitHub Models: only `HEALER_PAT` is needed — it covers both `api_key` and 
 The ingest workflow begins collecting per-run stats immediately. When a test crosses a
 configurable threshold (default: 20% flake rate over 7 days), the healer workflow is
 dispatched automatically.
+
+---
+
+## Integrate with an LLM coding agent
+
+Prefer to hand the integration to your coding agent (Claude Code, Cursor, Codex, Aider, etc.)?
+Copy the prompt below into the agent — it points the agent at this repo's example files as the
+source of truth, lists what to discover from the consumer repo, and pins the security
+non-negotiables that must not be relaxed.
+
+````
+I want to integrate the playwright-healer GitHub Action into this repo's Playwright CI.
+It auto-heals flaky/failing tests by opening reviewable PRs.
+
+Repo: https://github.com/Sacharified/playwright-healer
+
+1. Read these files for the canonical setup — do not improvise from memory:
+   - docs/examples/openrouter.yml  (heal workflow — recommended provider)
+   - docs/examples/ingest.yml      (ingest snippet appended to existing CI)
+   - README.md sections "Prerequisites" and "Token scopes & why GITHUB_TOKEN doesn't work"
+
+2. Discover from THIS repo:
+   - The CI workflow that runs Playwright (search .github/workflows/).
+   - playwright.config.{ts,js}: confirm `trace: 'on'` or `trace: 'retain-on-failure'`. If
+     neither is set, add `retain-on-failure` and call it out for me to confirm.
+   - The JSON report path. Either set `reporter: [['json', { outputFile: '...' }]]` in
+     the Playwright config, or pass `--reporter=json` with a known output path. Pick a
+     stable file path (e.g. test-results/results.json) — playwright-healer's `report_path`
+     defaults to that.
+   - How the app is built and started locally (look in package.json scripts and the
+     repo README). I need values for `setup_command`, `start_command`, and `base_url`
+     to put in the heal workflow.
+
+3. Make these changes:
+   a. Create .github/workflows/playwright-healer.yml from openrouter.yml. Replace the four
+      placeholders (base_url, setup_command, start_command, test_command) with the values
+      you discovered. Keep `persist-credentials: false` and the pinned `actions/checkout`
+      SHA exactly as shown.
+   b. Edit the existing Playwright CI workflow:
+      - Make sure the test step writes a JSON report at the path chosen above.
+      - Add `actions/upload-artifact` (if not already present) for the report directory.
+      - Append the ingest step from ingest.yml as the final step in the same job. Set
+        `report_path` to the JSON file path. Keep `if: always()` so flake stats are
+        captured on test failure too.
+
+4. Tell me to do these myself — DO NOT do them for me:
+   - Create a Personal Access Token with the scopes listed under README → "Token scopes"
+     and add it as repo secret `HEALER_PAT`.
+   - Create an OpenRouter API key at https://openrouter.ai/keys and add it as repo secret
+     `OPENROUTER_API_KEY`. (Or, if you are using GitHub Models free tier, follow
+     docs/examples/github-models.yml instead and reuse `HEALER_PAT` for both inputs.)
+   - Auto-dispatch is OFF by default. After secrets land, either set
+     `enable_auto_dispatch: 'true'` in the ingest step, or leave it off and trigger the
+     heal workflow manually from the Actions tab for the first few runs.
+
+5. Hard constraints — do not change any of these from the example files:
+   - `persist-credentials: false` on every checkout step.
+   - Never use `pull_request_target` — playwright-healer hard-fails on that trigger.
+   - Reference the action as `Sacharified/playwright-healer@v1`. Do not vendor, fork,
+     or bundle it.
+   - Do not add `Bash`, `Write`, or `Edit` to any agent tool allowlist.
+
+6. Verify before reporting done:
+   - The ingest step's `report_path` matches what Playwright actually writes.
+   - The heal workflow's `start_command` boots the app on the port in `base_url`.
+   - Both workflow files pass `actionlint` if it is available locally.
+   - Open the new heal workflow's YAML and confirm it still has `persist-credentials: false`.
+
+Default to Gemini unless I tell you otherwise. If anything is ambiguous, ask before
+making changes.
+````
 
 ---
 
@@ -181,11 +254,16 @@ use the same secret for both inputs.
 | Input | Purpose | Default |
 |-------|---------|---------|
 | `healer_token` | PR creation, workflow dispatch, issue creation | Required |
-| `api_key` | LLM provider inference (Gemini, Anthropic, GitHub Models) | Required (except Ollama) |
+| `api_key` | LLM provider inference (OpenRouter, GitHub Models, or omitted for Ollama) | Required (except Ollama) |
 | `github_token` | Low-scope state-branch operations | `${{ github.token }}` (built-in) |
 
-For Gemini: `api_key` = your `GEMINI_API_KEY`, `healer_token` = your `HEALER_PAT`.
+For OpenRouter: `api_key` = your `OPENROUTER_API_KEY`, `healer_token` = your `HEALER_PAT`.
 For GitHub Models: both `api_key` and `healer_token` can be the same `HEALER_PAT`.
+
+> **Trust chain note:** When `provider: openrouter`, the OpenRouter API key has access to
+> whatever upstream models the user enables in their OpenRouter account. OpenRouter sits
+> between the GitHub Actions runner and the upstream model provider — treat the OpenRouter
+> key with the same care as a direct provider key.
 
 ---
 
@@ -193,14 +271,17 @@ For GitHub Models: both `api_key` and `healer_token` can be the same `HEALER_PAT
 
 Three ready-to-use example files live under [`docs/examples/`](docs/examples/):
 
-### `docs/examples/gemini.yml` — Gemini 2.5 Flash (recommended)
+### `docs/examples/openrouter.yml` — OpenRouter (recommended)
 
-Gemini 2.5 Flash is the default recommendation for v0.1.0:
-- 1M token context window — handles large test suites
-- Free tier on Google AI Studio
-- Proven in end-to-end heal demos (~$0.03–$0.05/run)
+OpenRouter is the default recommendation:
+- One OpenAI-compatible endpoint fronts Anthropic, Google, OpenAI, Meta, and ~30 other
+  model providers — swap the `model` slug to switch upstream without other config changes.
+- Default model `anthropic/claude-sonnet-4.6` (note OpenRouter's slug uses a dot, distinct
+  from Anthropic SDK's hyphenated `claude-sonnet-4-6`).
+- Per-call USD comes back in `usage.cost`; both `max_turns` and `max_budget_usd` are
+  enforced as pre-call gates.
 
-Requires: `GEMINI_API_KEY` (Google AI Studio) + `HEALER_PAT`.
+Requires: `OPENROUTER_API_KEY` (https://openrouter.ai/keys) + `HEALER_PAT`.
 
 ### `docs/examples/github-models.yml` — GitHub Models gpt-4.1
 
@@ -212,34 +293,38 @@ GitHub Models gpt-4.1 is the recommended alternative:
 ### `docs/examples/ingest.yml` — Ingest snippet
 
 Paste this snippet into your existing CI workflow after your `upload-artifact` step. Works
-with both Gemini and GitHub Models heal workflows.
+with both OpenRouter and GitHub Models heal workflows.
 
 ---
 
 ## Switching providers
 
-Gemini and GitHub Models are **fully supported** in v0.1.0. Anthropic and Ollama adapters are
-in preview and not yet functional in v0.1.0 — use Gemini or GitHub Models for production use.
+OpenRouter and GitHub Models are **fully supported**. The Ollama adapter is a stub —
+self-hosted localhost support lands in a future phase.
 
-| Provider | Status | `provider` | `model` | `api_key` |
-|----------|--------|------------|---------|-----------|
-| Gemini 2.5 Flash | **Supported** | `gemini` | `gemini-2.5-flash` | `${{ secrets.GEMINI_API_KEY }}` |
-| GitHub Models gpt-4.1 | **Supported** | `github` | `openai/gpt-4.1` | `${{ secrets.HEALER_PAT }}` |
-| Anthropic claude-sonnet-4-6 | Preview | `anthropic` | `claude-sonnet-4-6` | `${{ secrets.ANTHROPIC_API_KEY }}` |
-| Ollama (local) | Preview | `ollama` | `llama3.1` | _(not required)_ |
+| Provider | Status | `provider` | `model` (examples) | `api_key` |
+|----------|--------|------------|--------------------|-----------|
+| OpenRouter (Claude Sonnet 4.6) | **Supported** | `openrouter` | `anthropic/claude-sonnet-4.6` | `${{ secrets.OPENROUTER_API_KEY }}` |
+| OpenRouter (Gemini 2.5 Flash)  | **Supported** | `openrouter` | `google/gemini-2.5-flash` | `${{ secrets.OPENROUTER_API_KEY }}` |
+| OpenRouter (gpt-4.1)           | **Supported** | `openrouter` | `openai/gpt-4.1` | `${{ secrets.OPENROUTER_API_KEY }}` |
+| OpenRouter (Llama 3.1 70B)     | **Supported** | `openrouter` | `meta-llama/llama-3.1-70b-instruct` | `${{ secrets.OPENROUTER_API_KEY }}` |
+| GitHub Models gpt-4.1 (free)   | **Supported** | `github`     | `openai/gpt-4.1` | `${{ secrets.HEALER_PAT }}` |
+| Ollama (local)                 | Stub          | `ollama`     | `llama3.1` | _(not required)_ |
 
-Change the three `provider`, `model`, and `api_key` inputs in your healer workflow to switch:
+To switch upstream within OpenRouter, change just the `model` line in your healer workflow:
 
 ```yaml
 - uses: Sacharified/playwright-healer@v1
   with:
     mode: heal
-    provider: gemini                              # change this
-    model: gemini-2.5-flash                       # change this
-    api_key: ${{ secrets.GEMINI_API_KEY }}        # change this
+    provider: openrouter                          # stays the same
+    model: google/gemini-2.5-flash                # change this to swap upstream
+    api_key: ${{ secrets.OPENROUTER_API_KEY }}    # stays the same
     healer_token: ${{ secrets.HEALER_PAT }}       # stays the same
     # ... other inputs
 ```
+
+Browse the full OpenRouter model catalog at https://openrouter.ai/models.
 
 ---
 

@@ -33,9 +33,8 @@ import { bundleContext } from './context-bundler.js';
 import { validate } from './validator.js';
 import type { ValidationResult } from './validator.js';
 import { applyFix } from './fix-applier.js';
-import { createGeminiAdapter } from './adapters/gemini.js';
 import { createGithubAdapter } from './adapters/github.js';
-import { anthropicAdapter } from './adapters/anthropic.js';
+import { createOpenrouterAdapter } from './adapters/openrouter.js';
 import { ollamaAdapter } from './adapters/ollama.js';
 import { openHealerPr, extractPatchedFiles } from './pr-writer.js';
 import { openIssue } from './issue-writer.js';
@@ -56,10 +55,11 @@ function formatStatsLine(stats: AgentRunStats): string {
 
 function selectAdapter(config: Config): Adapter {
   switch (config.provider) {
-    case 'gemini':
-      return createGeminiAdapter({
+    case 'openrouter':
+      return createOpenrouterAdapter({
         apiKey: config.apiKey,
-        model: config.model.length > 0 ? config.model : DEFAULT_MODELS.gemini,
+        model: config.model.length > 0 ? config.model : DEFAULT_MODELS.openrouter,
+        endpoint: config.apiEndpoint.length > 0 ? config.apiEndpoint : (DEFAULT_ENDPOINTS.openrouter ?? ''),
         baseUrl: config.baseUrl,
         maxTurns: config.maxTurns,
         maxBudgetUsd: config.maxBudgetUsd,
@@ -72,10 +72,8 @@ function selectAdapter(config: Config): Adapter {
         baseUrl: config.baseUrl,
         maxTurns: config.maxTurns,
       });
-    case 'anthropic':
-      return anthropicAdapter; // throws on call (D-01 stub)
     case 'ollama':
-      return ollamaAdapter;    // throws on call (D-01 stub)
+      return ollamaAdapter;    // throws on call (Phase 3 stub)
   }
 }
 

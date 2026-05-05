@@ -9,18 +9,22 @@
 // will be caught by the security-lint grep check in CI.
 
 // ALLOWED_TOOLS uses the Anthropic/Claude-Agent-SDK CANONICAL tool-naming
-// form (`mcp__server__tool` with double underscore). Provider adapters
-// (arriving in Phase 3 under src/healer/) translate this to provider-specific
-// syntax when invoking the agent loop:
-//   - anthropic → identity (this form)
-//   - gemini    → `mcp_server_tool` (single underscore, sanitized — per
-//                 @google/genai experimental MCP tool-naming convention)
-//   - ollama    → native JSON-schema function names (no MCP namespace;
-//                 requires an MCP↔function-calling bridge since Ollama
-//                 lacks native MCP as of 2026-04)
+// form (`mcp__server__tool` with double underscore). Provider adapters under
+// src/healer/adapters/ translate this to provider-specific syntax at the
+// call site:
+//   - openrouter → raw MCP tool name (e.g. `browser_navigate`) passed
+//                  through as the OpenAI-shape function name. OpenRouter
+//                  normalizes upstream tool-call shape so Anthropic, Google,
+//                  OpenAI, Meta, etc. all return the same `tool_calls` JSON.
+//   - github     → raw MCP tool name (same as openrouter — GitHub Models is
+//                  also an OpenAI-compatible chat-completions endpoint).
+//   - ollama     → native JSON-schema function names via an MCP↔function-
+//                  calling bridge. Phase 3 stub.
 // The canonical form is authoritative. Adapters normalize at the call site.
 // Inline string literals of these names remain banned (D-13) — downstream
 // code must import this constant and run it through its adapter's normalizer.
+// (Phase 01.4: anthropic + gemini provider rows removed when those direct-
+//  SDK adapters were retired in favour of routing through OpenRouter.)
 export const ALLOWED_TOOLS = Object.freeze([
   'Glob',
   'Grep',

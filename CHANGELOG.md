@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING — provider input narrowed to `openrouter | github | ollama`.** The
+  `anthropic` and `gemini` provider values are removed; cloud providers are now
+  reached via OpenRouter (one OpenAI-compatible endpoint fronting Anthropic, Google,
+  OpenAI, Meta, etc.). Default `provider` becomes `openrouter`; default `model` is
+  `anthropic/claude-sonnet-4.6` (note OpenRouter's slug uses a dot, distinct from
+  Anthropic SDK's hyphenated `claude-sonnet-4-6`). Workflows passing the removed
+  values will fail Zod validation with the standard enum error. Migration: replace
+  `provider: anthropic` with `provider: openrouter, model: anthropic/claude-sonnet-4.6`,
+  and `provider: gemini` with `provider: openrouter, model: google/gemini-2.5-pro`.
+- OpenRouter adapter enforces both `max_turns` AND `max_budget_usd` as pre-call
+  gates (versus GitHub Models which only enforces `max_turns` since the free tier
+  has no per-token charge). Per-call USD comes from `usage.cost` on every response.
+- Removed `@google/genai` SDK dependency (no longer used after Gemini's direct
+  adapter retired in favour of routing through OpenRouter).
+
 ## [0.1.0] - 2026-05-04
 
 ### Added
@@ -48,6 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   github → `openai/gpt-4.1`, ollama → `llama3.1`.
 - Tool-naming contract: `mcp__playwright__*` canonical form; adapters translate at
   call site (gemini → single underscore; github/ollama → native JSON-schema).
+- Note: this provider list reflects the v0.1.0 surface. The `[Unreleased]` section
+  documents the Phase 01.4 narrowing to `openrouter | github | ollama`.
 
 **Security scaffold**
 

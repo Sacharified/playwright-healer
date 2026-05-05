@@ -1,4 +1,4 @@
-# playwright-healer / heal (Gemini 2.5 Flash)
+# playwright-healer / heal (OpenRouter — recommended)
 #
 # Copy this file into your repo as .github/workflows/playwright-healer.yml
 # (or any name — update healer_workflow_file in your ingest step to match).
@@ -7,15 +7,20 @@
 # step when a flake-rate or slow-regression threshold is breached. You can
 # also trigger it manually from the Actions tab for ad-hoc healing.
 #
-# Gemini 2.5 Flash is the recommended default provider:
-#   - 1M token context window handles large test suites
-#   - Free tier via Google AI Studio (no billing setup needed for low volumes)
-#   - Proven selector-heal quality from Phase 03.1 end-to-end demo
+# OpenRouter is the recommended default provider:
+#   - One OpenAI-compatible endpoint fronts Anthropic, Google, OpenAI, Meta,
+#     and ~30 other model providers — change the `model` line to swap the
+#     upstream without touching the rest of the config.
+#   - Per-call USD comes back in `usage.cost`; both max_turns and
+#     max_budget_usd are enforced as pre-call gates.
+#   - Default model `anthropic/claude-sonnet-4.6` ships strong selector-heal
+#     quality. Swap for `google/gemini-2.5-flash`, `openai/gpt-4.1`,
+#     `meta-llama/llama-3.1-70b-instruct`, etc.
 #
 # Required secrets:
-#   GEMINI_API_KEY — Google AI Studio API key (https://aistudio.google.com/apikey)
-#   HEALER_PAT     — GitHub PAT with repo scope (classic) or
-#                    Contents:write + Pull requests:write + Issues:write (fine-grained)
+#   OPENROUTER_API_KEY — OpenRouter API key (https://openrouter.ai/keys)
+#   HEALER_PAT         — GitHub PAT with repo scope (classic) or
+#                        Contents:write + Pull requests:write + Issues:write (fine-grained)
 
 name: playwright-healer / heal
 
@@ -82,9 +87,13 @@ jobs:
         uses: Sacharified/playwright-healer@v1
         with:
           mode: heal
-          provider: gemini
-          model: gemini-2.5-flash
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          provider: openrouter
+          model: anthropic/claude-sonnet-4.6
+          # Swap for any OpenRouter-supported model:
+          # model: google/gemini-2.5-flash
+          # model: openai/gpt-4.1
+          # model: meta-llama/llama-3.1-70b-instruct
+          api_key: ${{ secrets.OPENROUTER_API_KEY }}
           healer_token: ${{ secrets.HEALER_PAT }}
           commit_sha: ${{ inputs.commitSha || github.sha }}
           base_url: http://localhost:3000            # replace with your app URL

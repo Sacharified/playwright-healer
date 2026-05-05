@@ -70,15 +70,15 @@ inputs:
     required: false
     default: 'github-actions[bot]'
   provider:
-    description: 'Inference provider: anthropic | gemini | github | ollama'
+    description: 'Inference provider: openrouter | github | ollama. openrouter routes to Anthropic, Google, OpenAI, Meta, and others through one OpenAI-compatible endpoint. github uses the GitHub Models free tier (PAT auth). ollama is for self-hosted localhost.'
     required: false
-    default: 'anthropic'
+    default: 'openrouter'
   model:
-    description: 'Model id (provider-specific). Empty string means use provider default.'
+    description: 'Model id. For openrouter use slash-prefixed slugs (e.g. anthropic/claude-sonnet-4.6, google/gemini-2.5-pro, openai/gpt-4.1). Empty string means use provider default.'
     required: false
     default: ''
   api_endpoint:
-    description: 'Custom provider endpoint. Useful for self-hosted Ollama (http://localhost:11434) or to override the GitHub Models endpoint (default https://models.github.ai/inference). Empty string uses provider default.'
+    description: 'Custom provider endpoint. Useful for self-hosted Ollama (http://localhost:11434) or to override the OpenRouter endpoint (default https://openrouter.ai/api/v1) or GitHub Models endpoint (default https://models.github.ai/inference). Empty string uses provider default.'
     required: false
     default: ''
 

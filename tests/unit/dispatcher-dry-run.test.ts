@@ -57,7 +57,7 @@ function scriptInputs(overrides: Record<string, string> = {}): void {
     'start_command':                    '',
     'test_command':                     '',
     'base_url':                         '',
-    'provider':                         'anthropic',
+    'provider':                         'openrouter',
     'model':                            '',
     'api_endpoint':                     '',
     'report_path':                      'test-results/results.json',
@@ -81,7 +81,7 @@ function scriptInputs(overrides: Record<string, string> = {}): void {
 }
 
 describe('runDryRun: SC#1 composite-action output', () => {
-  it('calls core.setOutput exactly once with key dryRunSummary (anthropic + canary key)', async () => {
+  it('calls core.setOutput exactly once with key dryRunSummary (openrouter + canary key)', async () => {
     scriptInputs({});
     // Re-import the module fresh so the mocked @actions/core is in effect.
     vi.resetModules();
@@ -106,7 +106,7 @@ describe('runDryRun: SC#1 composite-action output', () => {
     expect(outputArg).toBe(summaryArg); // byte-identical
   });
 
-  it('the published markdown contains all 5 anchors required by phase1-self-test Scenarios 4+5 (anthropic case)', async () => {
+  it('the published markdown contains all 5 anchors required by phase1-self-test Scenarios 4+5 (openrouter case)', async () => {
     scriptInputs({});
     vi.resetModules();
     await import('../../src/index.js');
@@ -115,7 +115,11 @@ describe('runDryRun: SC#1 composite-action output', () => {
     expect(setOutputMock.mock.calls[0][0]).toBe('dryRunSummary');
     const md = setOutputMock.mock.calls[0][1] as string;
     expect(md).toContain('# playwright-healer — dry-run summary');
-    expect(md).toContain('| `provider` | anthropic |');
+    expect(md).toContain('| `provider` | openrouter |');
+    // Empty `model` input renders as `(default: <DEFAULT_MODELS[provider]>)` —
+    // the dispatcher's runDryRun helper prepends the `(default: ...)` marker so
+    // operators can see the resolved value AND that they didn't override it.
+    expect(md).toContain('| `model` | (default: anthropic/claude-sonnet-4.6) |');
     expect(md).toContain('| `api_endpoint` | (default) |');
     expect(md).toContain('| `api_key` | (set — redacted) |');
     expect(md).not.toContain('test-canary-DO-NOT-USE-REAL-KEY');

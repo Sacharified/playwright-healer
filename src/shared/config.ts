@@ -6,14 +6,19 @@ import * as core from '@actions/core';
 const ModeEnum = z.enum(['ingest', 'heal', 'dry-run'])
   .describe('mode must be one of: ingest, heal, dry-run');
 
-const ProviderEnum = z.enum(['anthropic', 'gemini', 'github', 'ollama'])
-  .describe('provider must be one of: anthropic, gemini, github, ollama');
+const ProviderEnum = z.enum(['openrouter', 'github', 'ollama'])
+  .describe('provider must be one of: openrouter, github, ollama');
 
 export type Provider = z.infer<typeof ProviderEnum>;
 
 export const DEFAULT_MODELS: Record<Provider, string> = {
-  anthropic: 'claude-sonnet-4-6',
-  gemini:    'gemini-2.5-pro',
+  // OpenRouter — single OpenAI-compatible gateway that fronts most cloud
+  // models. Slash-prefixed model names (`<vendor>/<model>`) discriminate the
+  // upstream. Note OpenRouter's slug uses a DOT for the minor version
+  // (`claude-sonnet-4.6`), distinct from Anthropic's own native SDK slug
+  // (`claude-sonnet-4-6` with a hyphen). Default routes to Claude — preserves
+  // the "leave it blank, get Claude Sonnet" mental model from Phase 01.1.
+  openrouter: 'anthropic/claude-sonnet-4.6',
   // GitHub Models — OpenAI-compatible inference endpoint. Free tier available
   // for development. gpt-4.1 (the full model, not -mini) is the default because
   // -mini got hunk-header arithmetic wrong on real heals, producing patches
@@ -22,11 +27,11 @@ export const DEFAULT_MODELS: Record<Provider, string> = {
   ollama:    'llama3.1',
 };
 
-// Default OpenAI-compatible endpoints per provider. Adapters that don't take
-// a configurable base URL (current: anthropic / gemini — SDK-managed; ollama —
-// localhost) are absent from this map.
+// Default OpenAI-compatible endpoints per provider. Ollama is absent because
+// the default is localhost which the user typically overrides via apiEndpoint.
 export const DEFAULT_ENDPOINTS: Partial<Record<Provider, string>> = {
-  github: 'https://models.github.ai/inference',
+  openrouter: 'https://openrouter.ai/api/v1',
+  github:     'https://models.github.ai/inference',
 };
 
 // Factory form: lets tests override defaults without module-level state.
@@ -54,7 +59,7 @@ export function getInputSchema() {
     apiKey:          z.string().default(''),
     healerToken:     z.string().min(1, { message: 'healer_token is required and must be non-empty' }),
     githubToken:     z.string().min(1, { message: 'github_token is required and must be non-empty' }),
-    provider:        ProviderEnum.default('anthropic'),
+    provider:        ProviderEnum.default('openrouter'),
     model:           z.string().default(''),
     apiEndpoint:     z.string().default(''),
 

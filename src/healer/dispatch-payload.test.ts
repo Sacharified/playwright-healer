@@ -170,7 +170,7 @@ describe('Config — enableAutoDispatch + healerWorkflowFile (Task 1)', () => {
     healerToken: 'tok',
     githubToken: 'gtok',
     apiKey: 'key',
-    provider: 'anthropic',
+    provider: 'openrouter',
   } as const;
 
   // Test 7: 'true' → true; absent/'false' → false

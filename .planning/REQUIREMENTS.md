@@ -24,7 +24,7 @@
 - [x] **CFG-01
 **: `action.yml` exposes inputs for all user-provided commands: `setup-command`, `start-command`, `test-command`, `base-url`
 - [x] **CFG-02
-**: `action.yml` exposes secret inputs: `api-key` (inference-provider API key; required unless `provider=ollama` — per-provider enforcement via Zod `superRefine`, added in Phase 01.1 — formerly `anthropic-api-key`), `healer-token` (PAT or App token, required for PR creation and `workflow_dispatch`), `github-token` (defaults to built-in)
+**: `action.yml` exposes secret inputs: `api-key` (inference-provider API key; required unless `provider=ollama` — per-provider enforcement via Zod `superRefine`, originally added in Phase 01.1 with the four-provider surface, narrowed to three providers in Phase 01.4), `healer-token` (PAT or App token, required for PR creation and `workflow_dispatch`), `github-token` (defaults to built-in)
 - [x] **CFG-03**: `action.yml` exposes tunable thresholds: `flake-rate-threshold` (default 0.2 = 20%), `flake-window-days` (default 7), `slow-regression-pct` (default 1.5 = 50% slower), `rerun-count` (default 10), `rerun-pass-rate` (default 0.9 = 9/10), `max-budget-usd` (default 2.00), `max-turns` (default 30)
 - [ ] **CFG-04**: `action.yml` exposes per-fix-class toggles: `enable-selector-fixes`, `enable-wait-fixes`, `enable-assertion-fixes`, `enable-slow-fixes` (all default true)
 - [x] **CFG-05
@@ -68,9 +68,9 @@
 - [ ] **SEC-04**: The Claude Agent SDK is configured with an explicit `allowedTools` list: `["mcp__playwright__*", "Read", "Grep", "Glob"]`. `Bash`, `Write`, `Edit`, and other tools are not in that list; fix application happens outside the agent loop
 - [x] **SEC-05**: Before dispatching a heal, loop-guard checks: (a) the triggering commit's author is not `playwright-healer-bot`, (b) the triggering commit message does not contain `[skip-healer]`, (c) the per-test heal count in the state branch is below `max-heals-per-test-per-week` (default 3)
 - [x] **SEC-06
-**: The action never logs the values of `api-key` (renamed from `anthropic-api-key` in 01.1), `healer-token`, or `github-token`; `@actions/core.setSecret` is called on each at startup. `setSecret('')` is a no-op, so the Ollama empty-api-key path preserves the branchless D-07 ordering.
+**: The action never logs the values of `api-key` (renamed from `anthropic-api-key` in Phase 01.1; semantics unchanged in 01.4), `healer-token`, or `github-token`; `@actions/core.setSecret` is called on each at startup. `setSecret('')` is a no-op, so the Ollama empty-api-key path preserves the branchless D-07 ordering.
 - [x] **SEC-07
-**: The action does not phone home (no telemetry HTTP calls); outbound HTTP calls are restricted to the selected provider's API (`api.anthropic.com`, `generativelanguage.googleapis.com` for Gemini, or the configured `api-endpoint` for Ollama) + `api.github.com`.
+**: The action does not phone home (no telemetry HTTP calls); outbound HTTP calls are restricted to the selected provider's API (`openrouter.ai/api/v1`, `models.github.ai/inference`, or the configured `api-endpoint` for Ollama) + `api.github.com`.
 
 ### Healer Runtime & Context (HEA)
 
@@ -83,7 +83,7 @@
 
 ### Agent & Fix Application (FIX)
 
-- [ ] **FIX-01**: The agent loop is driven by a provider-specific adapter selected via the `provider` input (`anthropic`, `gemini`, or `ollama` — added in Phase 01.1). Per-provider default models (can be overridden via `model` input): `anthropic` → `claude-sonnet-4-6` (`claude-opus-4-7` available for hard cases), `gemini` → `gemini-2.5-pro`, `ollama` → `llama3.1`. The adapter contract (tool allow-listing, budget accounting, streaming event shape) is provider-agnostic; see `src/shared/config.ts` `DEFAULT_MODELS` and `src/shared/security-contract.ts` for the canonical tool-naming form. Do not downgrade to retired Claude 3.x models.
+- [ ] **FIX-01**: The agent loop is driven by a provider-specific adapter selected via the `provider` input (`openrouter`, `github`, or `ollama` after Phase 01.4; supersedes the four-provider surface from Phase 01.1). Per-provider default models (can be overridden via `model` input): `openrouter` → `anthropic/claude-sonnet-4.6` (slash-prefixed; OpenRouter's slug uses a dot, not the hyphen used by Anthropic SDK), `github` → `openai/gpt-4.1`, `ollama` → `llama3.1`. The adapter contract (tool allow-listing, budget accounting, streaming event shape) is provider-agnostic; see `src/shared/config.ts` `DEFAULT_MODELS` and `src/shared/security-contract.ts` for the canonical tool-naming form. OpenRouter routes Anthropic, Google, OpenAI, Meta, and other cloud models behind one OpenAI-compatible endpoint — swap the upstream by changing the `model` slug without touching the rest of the config. Do not downgrade to retired Claude 3.x models.
 - [ ] **FIX-02**: The agent is constrained by `maxTurns` (default 30) and a `maxBudgetUsd` enforced via a `PreToolUse` hook that aborts before exceeding budget rather than mid-call
 - [ ] **FIX-03**: The agent's system prompt forbids: `waitForTimeout`, `nth-child`/positional XPath selectors, weakening assertions (`toBe` → `toBeTruthy`), modifying files outside the test directory
 - [ ] **FIX-04**: The agent returns a structured proposal: `{ rootCause, fixClass, diff, rationale }`. The diff is applied to a working branch by the fix-applier — the agent itself does not have `Write` or `Edit` tools

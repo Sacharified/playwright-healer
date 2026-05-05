@@ -51,7 +51,7 @@ jobs:
         uses: ./
         with:
           mode: dry-run
-          provider: anthropic
+          provider: openrouter
           api_key: 'test-canary-DO-NOT-USE-REAL-KEY'
           healer_token: 'test-canary-healer-token'
           github_token: ${{ github.token }}
@@ -120,7 +120,7 @@ jobs:
         uses: ./
         with:
           mode: banana
-          provider: anthropic
+          provider: openrouter
           api_key: 'test-canary-DO-NOT-USE-REAL-KEY'
           healer_token: 'test-canary-healer-token'
           github_token: ${{ github.token }}
@@ -137,25 +137,26 @@ jobs:
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 3 (CFG-02 / SC#4) — Missing/empty api_key fails cleanly when
-  # provider is anthropic (Zod superRefine). This is the anthropic side of
-  # the per-provider api_key enforcement pair with Scenario 5.
+  # provider is openrouter (Zod superRefine). This is the cloud-provider
+  # side of the per-provider api_key enforcement pair with Scenario 5
+  # (which proves ollama is the only provider permitted to omit the key).
   # ──────────────────────────────────────────────────────────────────
 
   self-test-missing-api-key:
-    name: 'Self-test — missing api key fails cleanly (anthropic)'
+    name: 'Self-test — missing api key fails cleanly (openrouter)'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
 
-      - name: Invoke with empty api_key + provider=anthropic (expected to fail)
+      - name: Invoke with empty api_key + provider=openrouter (expected to fail)
         id: run
         continue-on-error: true
         uses: ./
         with:
           mode: dry-run
-          provider: anthropic
+          provider: openrouter
           api_key: ''
           healer_token: 'test-canary-healer-token'
           github_token: ${{ github.token }}
@@ -165,10 +166,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ steps.run.outcome }}" != "failure" ]; then
-            echo "::error::Expected failure for empty api_key with provider=anthropic, got outcome=${{ steps.run.outcome }}"
+            echo "::error::Expected failure for empty api_key with provider=openrouter, got outcome=${{ steps.run.outcome }}"
             exit 1
           fi
-          echo "OK: empty api_key + provider=anthropic produced failure outcome"
+          echo "OK: empty api_key + provider=openrouter produced failure outcome"
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 4 (CFG-05 happy path / TEST-01) — dry-run exits 0 and the
@@ -193,7 +194,7 @@ jobs:
         uses: ./
         with:
           mode: dry-run
-          provider: anthropic
+          provider: openrouter
           model: ''
           api_endpoint: ''
           api_key: 'test-canary-DO-NOT-USE-REAL-KEY'
@@ -222,11 +223,19 @@ jobs:
             echo "::error::Expected 'dry-run summary' marker in output — dispatcher did not write the redacted output"
             exit 1
           fi
-          if ! echo "$SUMMARY" | grep -q '| `provider` | anthropic |'; then
-            echo "::error::Expected 'provider | anthropic' row — new 01.1 provider input not reaching dry-run output"
+          if ! echo "$SUMMARY" | grep -q '| `provider` | openrouter |'; then
+            echo "::error::Expected 'provider | openrouter' row — provider input not reaching dry-run output (01.4)"
             exit 1
           fi
-          echo "OK: dry-run success + summary redaction verified via composite-action output"
+          # 01.4 D-03: empty `model` input must resolve to DEFAULT_MODELS.openrouter
+          # (`anthropic/claude-sonnet-4.6`) and that resolved value must show up in
+          # the redacted summary. The dispatcher renders empty-model with a `(default: ...)`
+          # marker so operators can see the resolved value AND that they didn't override it.
+          if ! echo "$SUMMARY" | grep -q '| `model` | (default: anthropic/claude-sonnet-4.6) |'; then
+            echo "::error::Expected 'model | (default: anthropic/claude-sonnet-4.6)' row — DEFAULT_MODELS.openrouter not reaching dry-run output (01.4)"
+            exit 1
+          fi
+          echo "OK: dry-run success + summary redaction + openrouter default model verified via composite-action output"
 
   # ──────────────────────────────────────────────────────────────────
   # SCENARIO 5 (01.1 — Ollama empty-key dry-run path / TEST-01) — load-

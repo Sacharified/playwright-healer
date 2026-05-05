@@ -137,7 +137,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     apiKey: 'key',
     healerToken: 'healer-pat',
     githubToken: 'gh-tok',
-    provider: 'anthropic',
+    provider: 'openrouter',
     model: '',
     apiEndpoint: '',
     reportPath: 'test-results/results.json',
