@@ -174,6 +174,9 @@ describe('openrouterAdapter — HTTP request shape', () => {
     // The legacy `usage: { include: true }` opt-in is deprecated — usage is
     // now always returned. We must NOT send it.
     expect(body.usage).toBeUndefined();
+    // max_tokens cap — defends against OpenRouter's 402 pre-flight credit
+    // check on the model's full output window (e.g. 65k+ on Sonnet 4.6).
+    expect(body.max_tokens).toBe(4096);
     expect(body.messages[0]).toEqual({ role: 'system', content: 'system' });
     expect(body.messages[1].role).toBe('user');
     expect(body.tools).toHaveLength(2);

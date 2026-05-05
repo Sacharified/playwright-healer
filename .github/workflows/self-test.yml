@@ -85,12 +85,41 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: '24'
+          # Cache npm downloads keyed on the fixture's lockfile. Cuts ~10–20s on
+          # cache hit. assert-test-broken has its own lockfile distinct from the
+          # action root (different deps tree).
+          cache: 'npm'
+          cache-dependency-path: tests/fixture-app/package-lock.json
+
+      - name: Cache Playwright browsers
+        id: pw-browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          # Hash the fixture lockfile — the chromium version Playwright resolves
+          # is locked by @playwright/test's pinned version, which lockfile
+          # changes track. ~150–300 MB browser download is the longest install
+          # step (~5 min on cache miss); cache hit drops it to seconds.
+          key: pw-browsers-${{ runner.os }}-${{ hashFiles('tests/fixture-app/package-lock.json') }}
 
       - name: Install fixture deps
         working-directory: tests/fixture-app
-        run: |
-          npm install
-          npx playwright install chromium --with-deps
+        run: npm ci
+
+      - name: Install Playwright browsers (full — cache miss)
+        if: steps.pw-browsers.outputs.cache-hit != 'true'
+        working-directory: tests/fixture-app
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Playwright OS deps only (cache hit)
+        # Cached browser binaries are still good across runs, but the runner's
+        # apt-installed system libraries (libnss, libasound, etc.) are not part
+        # of the Playwright cache and have to be re-applied on every run on
+        # a fresh ubuntu runner. install-deps is fast (~10s) — full install
+        # would re-download the browser unnecessarily on cache hit.
+        if: steps.pw-browsers.outputs.cache-hit == 'true'
+        working-directory: tests/fixture-app
+        run: npx playwright install-deps chromium
 
       - name: Start fixture server
         working-directory: tests/fixture-app
@@ -160,19 +189,70 @@ jobs:
           fi
           echo "sha=$INPUT_SHA" >> "$GITHUB_OUTPUT"
 
+      # Pre-warm caches BEFORE the action runs so its internal install steps
+      # (npm ci --production at action_path; playwright install chromium for
+      # the @playwright/mcp browser; user-supplied setup_command's npm install
+      # + playwright install for the fixture app) all hit warm caches and
+      # become near-no-ops on cache hit.
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          # Hash both lockfiles: the action's root deps (package-lock.json) and
+          # the fixture app's deps (tests/fixture-app/package-lock.json). Either
+          # changing should bust the cache.
+          cache-dependency-path: |
+            package-lock.json
+            tests/fixture-app/package-lock.json
+
+      - name: Cache Playwright browsers
+        id: pw-browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          # ~/.cache/ms-playwright stores chromium-XXXX/ directories, one per
+          # Playwright version. The action uses @playwright/mcp@0.0.70 (pinned
+          # in package.json) which has its own playwright-core version; the
+          # fixture-app uses @playwright/test (its own version). Both versions
+          # coexist in the cache directory keyed by build number, so caching
+          # the whole ~/.cache/ms-playwright covers both. Cache key hashes
+          # both lockfiles so a version bump on either side invalidates.
+          key: pw-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tests/fixture-app/package-lock.json') }}
+
+      # On cache hit, install only the apt-level system libraries the cached
+      # chromium binary needs (libnss, libasound, etc.). Browser binaries are
+      # pulled from the cache; no download. On cache miss, this step is a
+      # no-op — the action's Step 3.1 (and the user's setup_command) will run
+      # the full `playwright install chromium --with-deps` which downloads
+      # the browser AND installs the OS deps.
+      - name: Install Playwright OS deps (cache hit only)
+        if: steps.pw-browsers.outputs.cache-hit == 'true'
+        working-directory: tests/fixture-app
+        run: npx playwright install-deps chromium
+
       # action.yml reads dispatch payload via github.context.payload.inputs.
       # workflow_dispatch already populates that — no extra plumbing needed.
       - name: Run playwright-healer (heal mode, self-consumed)
         uses: ./
         with:
           mode: heal
-          # Phase 04 — switched from Gemini to GitHub Models (free tier; PAT-authed
-          # inference at https://models.github.ai/inference). HEALER_PAT is a fine-grained
-          # PAT with BOTH `models:read` (api_key path) and `repo` / `contents:write` +
-          # `pull-requests:write` + `issues:write` (healer_token path). Single secret.
-          provider: github
-          model: openai/gpt-4.1
-          api_key: ${{ secrets.HEALER_PAT }}
+          # Phase 01.4 — switched from GitHub Models to OpenRouter (the new
+          # recommended provider after the four-provider → three-provider
+          # consolidation). The action's overall DEFAULT_MODELS.openrouter is
+          # anthropic/claude-sonnet-4.6, but this self-test uses
+          # qwen/qwen3-coder:free explicitly so the e2e runs at $0 per heal
+          # without burning the OPENROUTER_API_KEY's credit balance. Qwen3
+          # Coder is tool-call-capable, coder-tuned, 262k context — strong
+          # fit for the trivial selector-swap heal target. If qwen3-coder
+          # gets rate-limited or returns malformed tool calls, fall back to
+          # `openai/gpt-oss-120b:free` or `meta-llama/llama-3.3-70b-instruct:free`.
+          # api_key is the OPENROUTER_API_KEY repo secret; healer_token is
+          # still HEALER_PAT (PR creation, issue creation, workflow_dispatch
+          # — fine-grained PAT with repo / contents:write + pull-requests:write
+          # + issues:write scopes).
+          provider: openrouter
+          model: qwen/qwen3-coder:free
+          api_key: ${{ secrets.OPENROUTER_API_KEY }}
           healer_token: ${{ secrets.HEALER_PAT }}
           commit_sha: ${{ steps.resolve.outputs.sha }}
           base_url: http://localhost:8080

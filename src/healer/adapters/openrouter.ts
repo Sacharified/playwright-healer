@@ -189,6 +189,15 @@ async function runAgentImpl(
           messages,
           tools: openaiTools,
           tool_choice: 'auto',
+          // OpenRouter does a pre-flight credit check against max_tokens:
+          // a request that asks for the model's full output window (often
+          // 65k+ on Sonnet 4.6) gets 402'd as soon as remaining credits drop
+          // below that cap, even if the actual response would be far smaller.
+          // Cap output at 4096 — ample for FixProposal JSON (rootCause +
+          // fixClass + diff + rationale ≈ 500–1500 tokens) and any tool-call
+          // arguments. Truncation would route to issue-fallback via the JSON
+          // parse failure path, which is still a valid heal outcome.
+          max_tokens: 4096,
         }),
       });
 
