@@ -120,6 +120,32 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
     throw new DiffApplyFailure(`git apply failed: ${apply.stderr.trim()}`);
   }
 
+  // 5. Verify the patch actually staged changes. `git apply --3way --index`
+  //    exits 0 even when the patch is a no-op (every hunk already matches the
+  //    current file state, OR --3way silently reconciled a malformed/path-
+  //    mismatched diff to the existing tree). Without this check, the next
+  //    `git commit` fails with "nothing to commit, working tree clean" and
+  //    exits 1, which surfaces as the opaque "process '/usr/bin/git' failed
+  //    with exit code 1" in the consumer's run log.
+  //
+  //    The thrown message includes the first 800 chars of the normalized diff
+  //    so the no-op cause is visible in the filed issue (catch-block route
+  //    truncates at 1000 chars).
+  const staged = await getExecOutput(
+    'git',
+    ['diff', '--cached', '--name-only'],
+    { cwd: args.cwd, silent: true },
+  );
+  if (staged.stdout.trim().length === 0) {
+    const diffPreview = normalizedDiff.slice(0, 800);
+    const truncated = normalizedDiff.length > 800 ? ` … (+${normalizedDiff.length - 800} more chars)` : '';
+    throw new DiffApplyFailure(
+      'git apply succeeded but staged zero changes — the agent\'s patch is a no-op. ' +
+      'Either every hunk already matches current file state, or the patch paths do not ' +
+      `resolve under cwd '${args.cwd}'. Normalized diff preview:\n${diffPreview}${truncated}`,
+    );
+  }
+
   // 6. Commit with SKIP_SENTINEL in the message body (PRI-06)
   //    Subject line is short; body contains the sentinel to suppress ingest loop.
   const commitMessage = `fix: heal flaky test\n\n${SKIP_SENTINEL}`;
