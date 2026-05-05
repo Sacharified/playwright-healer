@@ -284,6 +284,73 @@ describe('geminiAdapter — FIX-07 parseFinalText class widening', () => {
   });
 });
 
+describe('geminiAdapter — 503 UNAVAILABLE retry', () => {
+  function make503ApiError(): Error {
+    // Mirrors @google/genai's ApiError shape: Error subclass with numeric .status
+    const err = new Error(
+      '{"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}',
+    ) as Error & { status: number };
+    err.status = 503;
+    return err;
+  }
+
+  it('retries on 503 ApiError and succeeds on second attempt', async () => {
+    mockGenerateContent
+      .mockRejectedValueOnce(make503ApiError())
+      .mockResolvedValueOnce({
+        text: VALID_FIX_PROPOSAL_JSON,
+        usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50 },
+        functionCalls: undefined,
+      });
+    const adapter = createGeminiAdapter(makeOpts({ _retryBackoffMs: [0, 0, 0] }));
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ fixClass: 'selectors' });
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on body-as-message JSON match (no .status field) and succeeds', async () => {
+    // Defensive path — generic Error whose message contains the API JSON body
+    const bodyErr = new Error(
+      '{"error":{"code":503,"message":"high demand","status":"UNAVAILABLE"}}',
+    );
+    mockGenerateContent
+      .mockRejectedValueOnce(bodyErr)
+      .mockResolvedValueOnce({
+        text: VALID_FIX_PROPOSAL_JSON,
+        usageMetadata: {},
+        functionCalls: undefined,
+      });
+    const adapter = createGeminiAdapter(makeOpts({ _retryBackoffMs: [0, 0, 0] }));
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ fixClass: 'selectors' });
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after exhausting backoff and throws the last 503', async () => {
+    // 3 backoff entries → 4 total attempts before giving up
+    mockGenerateContent
+      .mockRejectedValueOnce(make503ApiError())
+      .mockRejectedValueOnce(make503ApiError())
+      .mockRejectedValueOnce(make503ApiError())
+      .mockRejectedValueOnce(make503ApiError());
+    const adapter = createGeminiAdapter(makeOpts({ _retryBackoffMs: [0, 0, 0] }));
+    await expect(adapter.runAgent(minimalContext, 'system', [])).rejects.toThrow(
+      /UNAVAILABLE/,
+    );
+    expect(mockGenerateContent).toHaveBeenCalledTimes(4);
+    expect(mockClose).toHaveBeenCalled(); // HEA-06 cleanup still runs
+  });
+
+  it('does NOT retry on non-503 errors (e.g., 401 auth, generic Error)', async () => {
+    mockGenerateContent.mockRejectedValueOnce(new Error('Invalid API key'));
+    const adapter = createGeminiAdapter(makeOpts({ _retryBackoffMs: [0, 0, 0] }));
+    await expect(adapter.runAgent(minimalContext, 'system', [])).rejects.toThrow(
+      'Invalid API key',
+    );
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('geminiAdapter — HEA-06 inner cleanup', () => {
   it('closes mcpClient on success', async () => {
     mockGenerateContent.mockResolvedValueOnce({

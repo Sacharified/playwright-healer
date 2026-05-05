@@ -35,6 +35,11 @@ const VALID_CLASSES = ['selectors', 'waits', 'assertions', 'slow'] as const;
 type FixClass = typeof VALID_CLASSES[number];
 import type { ContextBundle } from '../types.js';
 
+// Backoff schedule for 503 UNAVAILABLE retries on gemini-2.5-pro.
+// Pro is heavily contended; a single 503 should not fail the whole heal.
+// 3 retries (4 attempts total) ~ 30s max overhead before giving up.
+const DEFAULT_RETRY_BACKOFF_MS = [2000, 8000, 20000] as const;
+
 export interface GeminiAdapterOpts {
   apiKey: string;
   model: string;          // e.g., 'gemini-2.5-pro' (DEFAULT_MODELS.gemini)
@@ -46,6 +51,7 @@ export interface GeminiAdapterOpts {
   _Client?: typeof Client;
   _StdioClientTransport?: typeof StdioClientTransport;
   _mcpToTool?: typeof mcpToTool;
+  _retryBackoffMs?: readonly number[]; // tests pass [0,0,0] for instant retries
 }
 
 export function createGeminiAdapter(opts: GeminiAdapterOpts): Adapter {
@@ -60,6 +66,38 @@ function globMatch(pattern: string, name: string): boolean {
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*');
   return new RegExp(`^${escaped}$`).test(name);
+}
+
+// Detects Gemini's "high demand" 503 UNAVAILABLE response. The SDK exports
+// ApiError with a numeric .status, but defensively also matches the JSON body
+// surfaced via .message in case a different error wrapper is used.
+function isRetriable503(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { status?: unknown; message?: unknown };
+  if (e.status === 503) return true;
+  if (typeof e.message === 'string') {
+    if (/"code"\s*:\s*503/.test(e.message)) return true;
+    if (/"status"\s*:\s*"UNAVAILABLE"/.test(e.message)) return true;
+  }
+  return false;
+}
+
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  backoffMs: readonly number[],
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetriable503(err) || attempt >= backoffMs.length) throw err;
+      const delay = backoffMs[attempt];
+      console.warn(
+        `Gemini 503 UNAVAILABLE — retrying in ${delay}ms (attempt ${attempt + 2}/${backoffMs.length + 1})`,
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    }
+  }
 }
 
 async function runAgentImpl(
@@ -94,6 +132,8 @@ async function runAgentImpl(
     maxTurns: opts.maxTurns,
     maxBudgetUsd: opts.maxBudgetUsd,
   });
+
+  const retryBackoffMs = opts._retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
 
   try {
     // 3. AUDIT INVARIANT (SEC-04 / D-03 — supersedes any "translation" framing)
@@ -134,15 +174,19 @@ async function runAgentImpl(
     while (true) {
       budget.assertCanProceed(); // pre-call gate — throws BudgetExhausted if over ceiling
 
-      const response = await ai.models.generateContent({
-        model: opts.model,
-        contents,
-        config: {
-          systemInstruction: systemPrompt,            // system role — isolated from user content
-          tools: [mcpCallable],
-          automaticFunctionCalling: { disable: true },
-        },
-      });
+      const response = await callWithRetry(
+        () =>
+          ai.models.generateContent({
+            model: opts.model,
+            contents,
+            config: {
+              systemInstruction: systemPrompt,            // system role — isolated from user content
+              tools: [mcpCallable],
+              automaticFunctionCalling: { disable: true },
+            },
+          }),
+        retryBackoffMs,
+      );
 
       budget.recordUsage(response.usageMetadata ?? {});
 
