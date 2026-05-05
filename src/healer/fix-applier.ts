@@ -10,9 +10,36 @@
 
 import { exec, getExecOutput } from '@actions/exec';
 import { writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { SKIP_SENTINEL, BOT_EMAIL, BOT_NAME } from '../shared/loop-guard.js';
 import { normalizeDiff } from './diff-normalizer.js';
+
+/**
+ * Extract the set of `-` body lines per target file from a unified diff.
+ * Used by the no-op-patch diagnostic to determine whether the patch is a no-op
+ * because the file already matches the post-state, or because of a normalizer
+ * bug. A `-` line that DOES appear in the current file ⇒ apply should have
+ * changed something; absence ⇒ file is already in the post-state.
+ *
+ * Trims the leading `-` and surrounding whitespace so noisy whitespace drift
+ * between the agent's diff and the file doesn't produce false negatives.
+ */
+function extractMinusLinesByFile(diff: string): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  let currentPath: string | null = null;
+  for (const raw of diff.split('\n')) {
+    if (raw.startsWith('--- ')) {
+      const p = raw.slice(4).trim();
+      currentPath = p === '/dev/null' ? null : p.replace(/^a\//, '');
+      if (currentPath && !result[currentPath]) result[currentPath] = [];
+    } else if (raw.startsWith('-') && !raw.startsWith('---') && currentPath) {
+      const trimmed = raw.slice(1).trim();
+      if (trimmed.length > 0) result[currentPath].push(trimmed);
+    }
+  }
+  return result;
+}
 
 // BOT_EMAIL / BOT_NAME from loop-guard.js are the *fallback* identity used
 // when a caller doesn't supply args.botEmail / args.botName. Real callers
@@ -137,12 +164,44 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
     { cwd: args.cwd, silent: true },
   );
   if (staged.stdout.trim().length === 0) {
-    const diffPreview = normalizedDiff.slice(0, 800);
-    const truncated = normalizedDiff.length > 800 ? ` … (+${normalizedDiff.length - 800} more chars)` : '';
+    const minusByFile = extractMinusLinesByFile(normalizedDiff);
+    const checks: string[] = [];
+    for (const [relPath, minusLines] of Object.entries(minusByFile)) {
+      const absPath = path.join(args.cwd, relPath);
+      if (!existsSync(absPath)) {
+        checks.push(`  - ${relPath}: FILE NOT FOUND under cwd (path mismatch)`);
+        continue;
+      }
+      if (minusLines.length === 0) {
+        checks.push(`  - ${relPath}: pure-insertion hunk; no '-' lines to verify`);
+        continue;
+      }
+      const content = readFileSync(absPath, 'utf8');
+      const present = minusLines.filter((l) => content.includes(l)).length;
+      if (present === 0) {
+        checks.push(
+          `  - ${relPath}: 0/${minusLines.length} '-' lines found in file ` +
+            `→ file is ALREADY in the post-state (agent proposed a fix that's already applied)`,
+        );
+      } else if (present === minusLines.length) {
+        checks.push(
+          `  - ${relPath}: ${present}/${minusLines.length} '-' lines found in file ` +
+            `→ apply should have changed the file (possible diff-normalizer or git-apply bug)`,
+        );
+      } else {
+        checks.push(
+          `  - ${relPath}: ${present}/${minusLines.length} '-' lines found (partial match — likely whitespace drift)`,
+        );
+      }
+    }
+
+    const diffPreview = normalizedDiff.slice(0, 500);
+    const truncated = normalizedDiff.length > 500 ? ` … (+${normalizedDiff.length - 500} more chars)` : '';
     throw new DiffApplyFailure(
-      'git apply succeeded but staged zero changes — the agent\'s patch is a no-op. ' +
-      'Either every hunk already matches current file state, or the patch paths do not ' +
-      `resolve under cwd '${args.cwd}'. Normalized diff preview:\n${diffPreview}${truncated}`,
+      'git apply succeeded but staged zero changes. Per-file analysis:\n' +
+      `${checks.join('\n')}\n` +
+      `apply.stdout=${apply.stdout.trim().slice(0, 200) || '<empty>'}\n` +
+      `Diff preview:\n${diffPreview}${truncated}`,
     );
   }
 

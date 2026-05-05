@@ -429,7 +429,7 @@ export async function run(config: Config): Promise<void> {
         stateWorktreePath,
         triggeringRunUrl,
         failureMode: 'no-fix-proposable',
-        rootCause: `Unexpected pipeline error: ${msg.slice(0, 1000)}`,
+        rootCause: `Unexpected pipeline error: ${msg.slice(0, 2000)}`,
         reproSteps: 'Check the action run log for the full stack trace.',
         suggestedManualFix:
           'Inspect the error message above and file a bug against playwright-healer if it is reproducible.',
