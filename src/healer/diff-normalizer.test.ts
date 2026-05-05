@@ -143,6 +143,63 @@ describe('normalizeDiff — happy path', () => {
   });
 });
 
+describe('normalizeDiff — empty-context-blank rewrite (Gemini regression)', () => {
+  it('rewrites empty body lines to space-prefixed and counts them as context', () => {
+    // Reproduces the Gemini failure mode: agent emits a diff where blank
+    // context lines are truly empty (`""`) instead of space-prefixed (`" "`).
+    // Without the fix, normalized header counts under-report and `git apply
+    // --3way` silently no-ops the patch.
+    const sourceWithBlanks = `import { test, expect } from '@playwright/test';
+
+test('renders heading', async ({ page }) => {
+    await page.goto("/pokedex", { waitUntil: "domcontentloaded" });
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: "incorrect heading" }),
+    ).toBeVisible();
+
+    // Subtitle confirms SSR pulled the dataset.
+});
+`;
+    writeSource('e2e/pokedex.spec.ts', sourceWithBlanks);
+
+    // Note the `""` blank lines below — this is what Gemini actually emits.
+    const raw = `diff --git a/e2e/pokedex.spec.ts b/e2e/pokedex.spec.ts
+--- a/e2e/pokedex.spec.ts
++++ b/e2e/pokedex.spec.ts
+@@ -3,7 +3,7 @@
+     await page.goto("/pokedex", { waitUntil: "domcontentloaded" });
+
+    await expect(
+-      page.getByRole("heading", { level: 1, name: "incorrect heading" }),
++      page.getByRole("heading", { level: 1, name: "Pokédex" }),
+    ).toBeVisible();
+
+    // Subtitle confirms SSR pulled the dataset.
+`;
+
+    const out = normalizeDiff(raw, cwd);
+    // Header must reflect ALL 7 context-or-removed lines, not just the 5 with
+    // explicit prefixes. Same for the new side.
+    expect(out).toMatch(/^@@ -\d+,7 \+\d+,7 @@$/m);
+    // Output body must not contain any truly-empty lines between the header
+    // and the next file marker. Every body line is either '-', '+', or ' '-
+    // prefixed.
+    const lines = out.split('\n');
+    const hunkStart = lines.findIndex((l) => l.startsWith('@@'));
+    const bodyLines = lines.slice(hunkStart + 1).filter((l) => l.length > 0 || /* will not include */ false);
+    // After hunk header, the body must contain at least one literal " " line
+    // (the rewritten blank).
+    const blanksRewritten = lines.slice(hunkStart + 1, hunkStart + 9).filter((l) => l === ' ').length;
+    expect(blanksRewritten).toBeGreaterThanOrEqual(2);
+    // And NO truly-empty body lines exist before the trailing newline.
+    const emptyBody = lines.slice(hunkStart + 1, lines.length - 1).filter((l) => l === '').length;
+    expect(emptyBody).toBe(0);
+    // Sanity: bodyLines is non-empty (silences unused-var lint without changing the assertion above).
+    expect(bodyLines.length).toBeGreaterThan(0);
+  });
+});
+
 describe('normalizeDiff — failure modes', () => {
   it('throws when input has no file headers', () => {
     expect(() => normalizeDiff('this is just prose, no diff content', cwd))

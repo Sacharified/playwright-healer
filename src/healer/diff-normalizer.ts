@@ -74,7 +74,9 @@ export function normalizeDiff(rawDiff: string, cwd: string): string {
       const newStart = oldStart + newOffset;
 
       out.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
-      for (const line of hunk.body) out.push(line);
+      // Rewrite agent-emitted empty body lines as `" "` so git apply treats them
+      // as context (paired with the isContextBlank counting fix below).
+      for (const line of hunk.body) out.push(line.length === 0 ? ' ' : line);
 
       newOffset += newCount - oldCount;
     }
@@ -155,12 +157,22 @@ function stripFilePrefix(p: string, prefix: 'a/' | 'b/'): string {
   return p;
 }
 
+// Empty body lines (length 0) are context blanks the agent emitted without the
+// required leading space. Unified-diff spec demands `" "` for context blanks;
+// we count them as context here AND rewrite them as `" "` when emitting the
+// body (see normalizeDiff). Without this, hunk header counts under-report by
+// the number of blank context lines, which causes `git apply --3way` to
+// silently no-op the patch (corrupt-hunk fallback).
+function isContextBlank(l: string): boolean {
+  return l.length === 0;
+}
+
 function countOldLines(body: string[]): number {
-  return body.filter((l) => l.startsWith('-') || l.startsWith(' ')).length;
+  return body.filter((l) => l.startsWith('-') || l.startsWith(' ') || isContextBlank(l)).length;
 }
 
 function countNewLines(body: string[]): number {
-  return body.filter((l) => l.startsWith('+') || l.startsWith(' ')).length;
+  return body.filter((l) => l.startsWith('+') || l.startsWith(' ') || isContextBlank(l)).length;
 }
 
 /**
