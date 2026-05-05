@@ -85,12 +85,41 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: '24'
+          # Cache npm downloads keyed on the fixture's lockfile. Cuts ~10–20s on
+          # cache hit. assert-test-broken has its own lockfile distinct from the
+          # action root (different deps tree).
+          cache: 'npm'
+          cache-dependency-path: tests/fixture-app/package-lock.json
+
+      - name: Cache Playwright browsers
+        id: pw-browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          # Hash the fixture lockfile — the chromium version Playwright resolves
+          # is locked by @playwright/test's pinned version, which lockfile
+          # changes track. ~150–300 MB browser download is the longest install
+          # step (~5 min on cache miss); cache hit drops it to seconds.
+          key: pw-browsers-${{ runner.os }}-${{ hashFiles('tests/fixture-app/package-lock.json') }}
 
       - name: Install fixture deps
         working-directory: tests/fixture-app
-        run: |
-          npm install
-          npx playwright install chromium --with-deps
+        run: npm ci
+
+      - name: Install Playwright browsers (full — cache miss)
+        if: steps.pw-browsers.outputs.cache-hit != 'true'
+        working-directory: tests/fixture-app
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Playwright OS deps only (cache hit)
+        # Cached browser binaries are still good across runs, but the runner's
+        # apt-installed system libraries (libnss, libasound, etc.) are not part
+        # of the Playwright cache and have to be re-applied on every run on
+        # a fresh ubuntu runner. install-deps is fast (~10s) — full install
+        # would re-download the browser unnecessarily on cache hit.
+        if: steps.pw-browsers.outputs.cache-hit == 'true'
+        working-directory: tests/fixture-app
+        run: npx playwright install-deps chromium
 
       - name: Start fixture server
         working-directory: tests/fixture-app
@@ -159,6 +188,47 @@ jobs:
             INPUT_SHA="$(git rev-parse HEAD)"
           fi
           echo "sha=$INPUT_SHA" >> "$GITHUB_OUTPUT"
+
+      # Pre-warm caches BEFORE the action runs so its internal install steps
+      # (npm ci --production at action_path; playwright install chromium for
+      # the @playwright/mcp browser; user-supplied setup_command's npm install
+      # + playwright install for the fixture app) all hit warm caches and
+      # become near-no-ops on cache hit.
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          # Hash both lockfiles: the action's root deps (package-lock.json) and
+          # the fixture app's deps (tests/fixture-app/package-lock.json). Either
+          # changing should bust the cache.
+          cache-dependency-path: |
+            package-lock.json
+            tests/fixture-app/package-lock.json
+
+      - name: Cache Playwright browsers
+        id: pw-browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          # ~/.cache/ms-playwright stores chromium-XXXX/ directories, one per
+          # Playwright version. The action uses @playwright/mcp@0.0.70 (pinned
+          # in package.json) which has its own playwright-core version; the
+          # fixture-app uses @playwright/test (its own version). Both versions
+          # coexist in the cache directory keyed by build number, so caching
+          # the whole ~/.cache/ms-playwright covers both. Cache key hashes
+          # both lockfiles so a version bump on either side invalidates.
+          key: pw-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tests/fixture-app/package-lock.json') }}
+
+      # On cache hit, install only the apt-level system libraries the cached
+      # chromium binary needs (libnss, libasound, etc.). Browser binaries are
+      # pulled from the cache; no download. On cache miss, this step is a
+      # no-op — the action's Step 3.1 (and the user's setup_command) will run
+      # the full `playwright install chromium --with-deps` which downloads
+      # the browser AND installs the OS deps.
+      - name: Install Playwright OS deps (cache hit only)
+        if: steps.pw-browsers.outputs.cache-hit == 'true'
+        working-directory: tests/fixture-app
+        run: npx playwright install-deps chromium
 
       # action.yml reads dispatch payload via github.context.payload.inputs.
       # workflow_dispatch already populates that — no extra plumbing needed.
