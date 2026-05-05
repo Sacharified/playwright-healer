@@ -238,13 +238,20 @@ jobs:
           mode: heal
           # Phase 01.4 — switched from GitHub Models to OpenRouter (the new
           # recommended provider after the four-provider → three-provider
-          # consolidation). OpenRouter routes to anthropic/claude-sonnet-4.6
-          # (the new default model). api_key is the OPENROUTER_API_KEY repo
-          # secret; healer_token is still HEALER_PAT (PR creation, issue
-          # creation, workflow_dispatch — fine-grained PAT with repo /
-          # contents:write + pull-requests:write + issues:write scopes).
+          # consolidation). The action's overall DEFAULT_MODELS.openrouter is
+          # anthropic/claude-sonnet-4.6, but this self-test uses
+          # qwen/qwen3-coder:free explicitly so the e2e runs at $0 per heal
+          # without burning the OPENROUTER_API_KEY's credit balance. Qwen3
+          # Coder is tool-call-capable, coder-tuned, 262k context — strong
+          # fit for the trivial selector-swap heal target. If qwen3-coder
+          # gets rate-limited or returns malformed tool calls, fall back to
+          # `openai/gpt-oss-120b:free` or `meta-llama/llama-3.3-70b-instruct:free`.
+          # api_key is the OPENROUTER_API_KEY repo secret; healer_token is
+          # still HEALER_PAT (PR creation, issue creation, workflow_dispatch
+          # — fine-grained PAT with repo / contents:write + pull-requests:write
+          # + issues:write scopes).
           provider: openrouter
-          model: anthropic/claude-sonnet-4.6
+          model: qwen/qwen3-coder:free
           api_key: ${{ secrets.OPENROUTER_API_KEY }}
           healer_token: ${{ secrets.HEALER_PAT }}
           commit_sha: ${{ steps.resolve.outputs.sha }}
