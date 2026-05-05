@@ -166,13 +166,16 @@ jobs:
         uses: ./
         with:
           mode: heal
-          # Phase 04 — switched from Gemini to GitHub Models (free tier; PAT-authed
-          # inference at https://models.github.ai/inference). HEALER_PAT is a fine-grained
-          # PAT with BOTH `models:read` (api_key path) and `repo` / `contents:write` +
-          # `pull-requests:write` + `issues:write` (healer_token path). Single secret.
-          provider: github
-          model: openai/gpt-4.1
-          api_key: ${{ secrets.HEALER_PAT }}
+          # Phase 01.4 — switched from GitHub Models to OpenRouter (the new
+          # recommended provider after the four-provider → three-provider
+          # consolidation). OpenRouter routes to anthropic/claude-sonnet-4.6
+          # (the new default model). api_key is the OPENROUTER_API_KEY repo
+          # secret; healer_token is still HEALER_PAT (PR creation, issue
+          # creation, workflow_dispatch — fine-grained PAT with repo /
+          # contents:write + pull-requests:write + issues:write scopes).
+          provider: openrouter
+          model: anthropic/claude-sonnet-4.6
+          api_key: ${{ secrets.OPENROUTER_API_KEY }}
           healer_token: ${{ secrets.HEALER_PAT }}
           commit_sha: ${{ steps.resolve.outputs.sha }}
           base_url: http://localhost:8080
