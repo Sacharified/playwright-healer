@@ -338,6 +338,22 @@ export async function run(config: Config): Promise<void> {
     });
 
     // ── Step 10: Validate the fix (VAL-01 / VAL-02 / VAL-03) ────────────
+    //
+    // Validation is a SIGNAL surfaced in the PR body, not a gate that converts
+    // valid agent fixes into prose-only issues. The agent has already produced
+    // a syntactically valid, diff-lint-clean patch and applied it cleanly to
+    // the heal branch — discarding that into an issue when local validator
+    // reports 0% pushes work back to the human (who must read the rationale,
+    // re-derive the patch by hand, and apply it). Far more often than not the
+    // validator failure is environmental — e.g. the consumer's
+    // `playwright.config.ts` has `webServer.reuseExistingServer: false` so
+    // every rerun fights for an in-use port and 0/N pass even though the fix
+    // is correct. The reviewer's own PR-CI is the authoritative validation
+    // signal anyway; let them see the proposed change as a PR and decide.
+    //
+    // Auto-merge stays correctly gated: `evaluateAutoMerge()` in pr-writer.ts
+    // requires `passRate >= autoMergePassRate`, so a low pass-rate blocks
+    // auto-merge automatically — the PR opens but does not self-merge.
     let validation: ValidationResult;
     if (config.skipPostFixValidation) {
       // Demo mode (D-02): fixture-ci.yml on the PR is the truth, not local validator.
@@ -349,18 +365,10 @@ export async function run(config: Config): Promise<void> {
     } else {
       validation = await validate(payload.testFile, payload.testTitle, config.rerunCount, cwd);
       if (validation.passRate < config.rerunPassRate) {
-        await fileIssue({
-          config, owner, repo,
-          testFile: payload.testFile,
-          testTitle: payload.testTitle,
-          stateWorktreePath,
-          triggeringRunUrl,
-          failureMode: 'validation-failed',
-          rootCause: `Fix validation pass rate ${(validation.passRate * 100).toFixed(0)}% (< required ${(config.rerunPassRate * 100).toFixed(0)}%). ${formatStatsLine(stats)}`,
-          reproSteps: `Validator ran ${validation.total} reruns at retries=0; ${validation.passed} passed.`,
-          suggestedManualFix: `The proposed fix is unstable. Inspect the agent rationale: ${proposal.rationale}. ${formatStatsLine(stats)}`,
-        });
-        return;
+        core.warning(
+          `Fix validation pass rate ${(validation.passRate * 100).toFixed(0)}% < required ${(config.rerunPassRate * 100).toFixed(0)}% — ` +
+          `opening PR anyway with the result surfaced in the body. ${formatStatsLine(stats)}`,
+        );
       }
     }
 

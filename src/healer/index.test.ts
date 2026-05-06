@@ -225,20 +225,21 @@ describe('run() — D-09 routing tree', () => {
     expect(mockOpenPr).not.toHaveBeenCalled();
   });
 
-  it('VAL-03: pass rate below threshold routes to validation-failed issue, body includes stats', async () => {
+  it('VAL-03: pass rate below threshold opens the PR anyway with the validation result in the body', async () => {
     // First validate (sanity) returns mid; second (post-fix) returns below threshold.
+    // New behaviour (May 2026): validation is a SIGNAL, not a gate. The agent's
+    // applied diff still becomes a PR; pass-rate is rendered in the body and
+    // auto-merge stays gated on it (evaluateAutoMerge in pr-writer).
     mockValidate
       .mockResolvedValueOnce({ passed: 5, total: 10, passRate: 0.5, perRun: [] })
       .mockResolvedValueOnce({ passed: 6, total: 10, passRate: 0.6, perRun: [] });
     mockRunAgent.mockResolvedValueOnce(adapterResult(validFixProposal, { usdSpent: 0.77, turnsUsed: 15 }));
     await run(baseConfig);
-    expect(mockOpenIssue).toHaveBeenCalledWith(expect.objectContaining({
-      failureMode: 'validation-failed',
+    expect(mockOpenIssue).not.toHaveBeenCalled();
+    expect(mockOpenPr).toHaveBeenCalledWith(expect.objectContaining({
+      costUsd: 0.77,
+      validation: expect.objectContaining({ passed: 6, total: 10, passRate: 0.6 }),
     }));
-    const issueArgs = mockOpenIssue.mock.calls[0][0];
-    expect(issueArgs.rootCause).toMatch(/\$0\.7700/);
-    expect(issueArgs.suggestedManualFix).toMatch(/15 turn/);
-    expect(mockOpenPr).not.toHaveBeenCalled();
   });
 
   it('Happy path: opens a PR with costUsd from stats.usdSpent (PRI-02)', async () => {
