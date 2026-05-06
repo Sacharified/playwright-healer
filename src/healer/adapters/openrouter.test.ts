@@ -179,11 +179,15 @@ describe('openrouterAdapter — HTTP request shape', () => {
     expect(body.max_tokens).toBe(4096);
     expect(body.messages[0]).toEqual({ role: 'system', content: 'system' });
     expect(body.messages[1].role).toBe('user');
-    expect(body.tools).toHaveLength(2);
+    // 2 MCP tools + 2 synthetic submit_* terminator tools
+    expect(body.tools).toHaveLength(4);
     expect(body.tools[0]).toMatchObject({
       type: 'function',
       function: { name: 'browser_navigate' },
     });
+    expect(body.tools.map((t: { function: { name: string } }) => t.function.name)).toEqual(
+      expect.arrayContaining(['submit_fix_proposal', 'submit_no_fix']),
+    );
   });
 
   it('raises a descriptive error on non-2xx response', async () => {
@@ -360,10 +364,25 @@ describe('openrouterAdapter — FIX-04 result parsing', () => {
     expect(result.stats.turnsUsed).toBe(1);
   });
 
-  it('throws on unparseable final text', async () => {
-    mockFetch.mockResolvedValueOnce(finalAnswer('this is not JSON'));
+  it('degrades unparseable final text to NoFixProposable carrying the prose as evidence (no crash)', async () => {
+    mockFetch.mockResolvedValueOnce(finalAnswer('I can see the test is failing but...'));
     const adapter = createOpenrouterAdapter(makeOpts());
-    await expect(adapter.runAgent(minimalContext, 'system', [])).rejects.toThrow(/non-JSON/);
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({
+      reason: 'no-fix-proposable',
+      evidence: expect.stringContaining('non-JSON final response'),
+    });
+    expect((result.proposal as { evidence: string }).evidence).toContain('I can see the test is failing');
+  });
+
+  it('degrades empty final response to NoFixProposable', async () => {
+    mockFetch.mockResolvedValueOnce(finalAnswer(''));
+    const adapter = createOpenrouterAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({
+      reason: 'no-fix-proposable',
+      evidence: expect.stringContaining('empty final response'),
+    });
   });
 });
 
@@ -394,7 +413,7 @@ describe('openrouterAdapter — FIX-07 parseFinalText class widening', () => {
     expect(result.proposal).toMatchObject({ fixClass: 'slow' });
   });
 
-  it('rejects fixClass: unknown-class', async () => {
+  it('degrades fixClass: unknown-class to NoFixProposable (shape mismatch in fallback path)', async () => {
     const unknownJson = JSON.stringify({
       rootCause: 'Something',
       fixClass: 'unknown-class',
@@ -403,9 +422,110 @@ describe('openrouterAdapter — FIX-07 parseFinalText class widening', () => {
     });
     mockFetch.mockResolvedValueOnce(finalAnswer(unknownJson));
     const adapter = createOpenrouterAdapter(makeOpts());
-    await expect(adapter.runAgent(minimalContext, 'system', [])).rejects.toThrow(
-      /Agent JSON does not match FixProposal or NoFixProposable shape/,
-    );
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({
+      reason: 'no-fix-proposable',
+      evidence: expect.stringContaining('does not match FixProposal'),
+    });
+  });
+});
+
+describe('openrouterAdapter — submit-tool terminator path', () => {
+  function submitFixToolCall(args: Record<string, unknown>, id = 'sub_1', cost = 0.01) {
+    return fetchOk({
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id,
+            type: 'function',
+            function: { name: 'submit_fix_proposal', arguments: JSON.stringify(args) },
+          }],
+        },
+      }],
+      usage: { prompt_tokens: 100, completion_tokens: 50, cost },
+    });
+  }
+
+  function submitNoFixToolCall(evidence: string, id = 'sub_2', cost = 0.01) {
+    return fetchOk({
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id,
+            type: 'function',
+            function: { name: 'submit_no_fix', arguments: JSON.stringify({ evidence }) },
+          }],
+        },
+      }],
+      usage: { prompt_tokens: 100, completion_tokens: 20, cost },
+    });
+  }
+
+  it('appends submit_fix_proposal and submit_no_fix to the tools list (in addition to MCP tools)', async () => {
+    mockFetch.mockResolvedValueOnce(submitNoFixToolCall('done'));
+    const adapter = createOpenrouterAdapter(makeOpts());
+    await adapter.runAgent(minimalContext, 'system', []);
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const names = body.tools.map((t: { function: { name: string } }) => t.function.name);
+    expect(names).toEqual(expect.arrayContaining(['browser_navigate', 'browser_click', 'submit_fix_proposal', 'submit_no_fix']));
+  });
+
+  it('exits the loop with a FixProposal when the agent calls submit_fix_proposal with valid args', async () => {
+    mockFetch.mockResolvedValueOnce(submitFixToolCall({
+      rootCause: 'Selector wrong',
+      fixClass: 'selectors',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'getByRole is more stable',
+    }, 'sub_abc', 0.02));
+    const adapter = createOpenrouterAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toEqual({
+      rootCause: 'Selector wrong',
+      fixClass: 'selectors',
+      diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-x\n+y\n',
+      rationale: 'getByRole is more stable',
+    });
+    expect(result.stats.turnsUsed).toBe(1);
+    expect(result.stats.usdSpent).toBeCloseTo(0.02, 5);
+    // submit_* calls must NOT be dispatched to MCP — they're orchestrator-internal.
+    expect(mockCallTool).not.toHaveBeenCalled();
+  });
+
+  it('exits the loop with a NoFixProposable when the agent calls submit_no_fix', async () => {
+    mockFetch.mockResolvedValueOnce(submitNoFixToolCall('reproduced once but no clear root cause', 'sub_x'));
+    const adapter = createOpenrouterAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toEqual({
+      reason: 'no-fix-proposable',
+      evidence: 'reproduced once but no clear root cause',
+    });
+    expect(mockCallTool).not.toHaveBeenCalled();
+  });
+
+  it('feeds an error tool message and continues the loop when submit_fix_proposal args fail validation', async () => {
+    mockFetch
+      .mockResolvedValueOnce(submitFixToolCall({
+        rootCause: 'something',
+        fixClass: 'not-a-valid-class',
+        diff: 'd',
+        rationale: 'r',
+      }, 'sub_bad'))
+      .mockResolvedValueOnce(submitNoFixToolCall('giving up after retry', 'sub_retry'));
+
+    const adapter = createOpenrouterAdapter(makeOpts());
+    const result = await adapter.runAgent(minimalContext, 'system', []);
+    expect(result.proposal).toMatchObject({ reason: 'no-fix-proposable' });
+    expect(result.stats.turnsUsed).toBe(2);
+
+    const secondBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+    const toolMsg = secondBody.messages.find((m: { role: string; tool_call_id?: string }) => m.role === 'tool' && m.tool_call_id === 'sub_bad');
+    expect(toolMsg.content).toMatch(/submit_fix_proposal requires/);
+    // The bad submit_* call must NOT be dispatched to MCP.
+    expect(mockCallTool).not.toHaveBeenCalled();
   });
 });
 
