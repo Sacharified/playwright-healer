@@ -330,6 +330,11 @@ export async function run(config: Config): Promise<void> {
       token: config.healerToken,
       botEmail: config.botEmail,
       botName: config.botName,
+      // Required for monorepos: agent emits diff paths relative to the
+      // working_directory subdir (`e2e/...`), but git apply resolves them
+      // against the repo root unless we tell it otherwise. Empty string
+      // (single-tree repo) is treated as "no flag" inside applyFix.
+      workingDirectoryPrefix: config.workingDirectory,
     });
 
     // ── Step 10: Validate the fix (VAL-01 / VAL-02 / VAL-03) ────────────
