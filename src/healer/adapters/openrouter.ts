@@ -35,6 +35,11 @@ import {
 import { BudgetExhausted } from '../budget.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from '../adapter.js';
 import type { ContextBundle } from '../types.js';
+import {
+  SUBMIT_TOOLS,
+  isSubmitToolName,
+  parseSubmitArgs,
+} from './submit-tool.js';
 
 const VALID_CLASSES = ['selectors', 'waits', 'assertions', 'slow'] as const;
 type FixClass = typeof VALID_CLASSES[number];
@@ -138,17 +143,24 @@ async function runAgentImpl(
       }
     }
 
-    const openaiTools = toolList.tools.map((t) => ({
-      type: 'function' as const,
-      function: {
-        name: t.name,
-        description: typeof t.description === 'string' ? t.description : '',
-        parameters: (t.inputSchema as Record<string, unknown> | undefined) ?? {
-          type: 'object',
-          properties: {},
+    const openaiTools = [
+      ...toolList.tools.map((t) => ({
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: typeof t.description === 'string' ? t.description : '',
+          parameters: (t.inputSchema as Record<string, unknown> | undefined) ?? {
+            type: 'object',
+            properties: {},
+          },
         },
-      },
-    }));
+      })),
+      // Synthetic terminator tools — orchestrator-internal, never dispatched to
+      // MCP. Forces the agent to return its proposal through a schema-validated
+      // function call instead of free-form prose, which Sonnet 4.6 in particular
+      // emits despite explicit JSON-only instructions.
+      ...SUBMIT_TOOLS,
+    ];
 
     const messages: OpenAiMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -222,6 +234,10 @@ async function runAgentImpl(
       const toolCalls = assistantMsg.tool_calls ?? [];
 
       if (toolCalls.length === 0) {
+        // No tool calls AND no submit_* call — the agent dropped back to chat
+        // prose despite explicit submit-tool instructions. Don't crash; route
+        // to no-fix-proposable with the prose as evidence (the orchestrator
+        // files a clean issue carrying the model's reasoning).
         const proposal = parseFinalText(assistantMsg.content ?? '');
         return {
           proposal,
@@ -246,6 +262,25 @@ async function runAgentImpl(
             role: 'tool',
             tool_call_id: call.id,
             content: `Error: tool arguments were not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          continue;
+        }
+
+        // Submit-tool intercept — terminates the loop with the parsed proposal.
+        // If args fail validation we feed the error back as a tool message so
+        // the model can retry within the existing maxTurns / maxBudgetUsd gates.
+        if (isSubmitToolName(call.function.name)) {
+          const submit = parseSubmitArgs(call.function.name, args);
+          if (submit.ok) {
+            return {
+              proposal: submit.proposal,
+              stats: { usdSpent, turnsUsed },
+            };
+          }
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: `Error: ${submit.error}`,
           });
           continue;
         }
@@ -324,16 +359,30 @@ function renderContextForAgent(context: ContextBundle): string {
   ].join('\n');
 }
 
+// Backward-compat fallback for content-only final messages (the legacy
+// parse-JSON-from-prose path). Primary path is the submit_* tool intercept
+// in the loop above. If parsing fails or the JSON shape is wrong we degrade
+// to NoFixProposable carrying the raw prose as evidence — the orchestrator
+// then files a no-fix-proposable issue instead of crashing the runner.
 function parseFinalText(text: string): FixProposal | NoFixProposable {
   const stripped = text
     .replace(/^\s*```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/i, '')
     .trim();
+  if (stripped.length === 0) {
+    return {
+      reason: 'no-fix-proposable',
+      evidence: 'Agent returned an empty final response and did not call submit_fix_proposal or submit_no_fix.',
+    };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripped);
-  } catch (err) {
-    throw new Error(`Agent returned non-JSON final text: ${err}`);
+  } catch {
+    return {
+      reason: 'no-fix-proposable',
+      evidence: `Agent returned a non-JSON final response and did not call submit_fix_proposal or submit_no_fix. Response excerpt: ${truncate(text, 1500)}`,
+    };
   }
   if (
     parsed !== null &&
@@ -362,7 +411,14 @@ function parseFinalText(text: string): FixProposal | NoFixProposable {
       };
     }
   }
-  throw new Error('Agent JSON does not match FixProposal or NoFixProposable shape');
+  return {
+    reason: 'no-fix-proposable',
+    evidence: `Agent returned JSON that does not match FixProposal or NoFixProposable shape and did not call submit_fix_proposal or submit_no_fix. Response excerpt: ${truncate(text, 1500)}`,
+  };
+}
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : `${s.slice(0, n)}…[truncated]`;
 }
 
 export const openrouterAdapter: Adapter = {

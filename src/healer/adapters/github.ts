@@ -40,6 +40,11 @@ import {
 import { BudgetExhausted } from '../budget.js';
 import type { Adapter, FixProposal, NoFixProposable, AgentRunStats } from '../adapter.js';
 import type { ContextBundle } from '../types.js';
+import {
+  SUBMIT_TOOLS,
+  isSubmitToolName,
+  parseSubmitArgs,
+} from './submit-tool.js';
 
 // FIX-07: Allow-list of all valid fixClass values (T-04-04 mitigation — LLM-controlled
 // field validated via includes() guard before casting; rejects any value outside the four).
@@ -140,21 +145,26 @@ async function runAgentImpl(
       }
     }
 
-    // 4. Translate MCP tool list into OpenAI function-tools shape.
-    // Tool names pass through unchanged — the audit invariant above guarantees
-    // the canonical form is allow-listed, and raw `browser_*` names are valid
-    // OpenAI function identifiers (they match `[a-zA-Z0-9_-]{1,64}`).
-    const openaiTools = toolList.tools.map((t) => ({
-      type: 'function' as const,
-      function: {
-        name: t.name,
-        description: typeof t.description === 'string' ? t.description : '',
-        parameters: (t.inputSchema as Record<string, unknown> | undefined) ?? {
-          type: 'object',
-          properties: {},
+    // 4. Translate MCP tool list into OpenAI function-tools shape, then append
+    // the synthetic submit_* terminator tools. Submit tools are
+    // orchestrator-internal control signals, never dispatched to MCP — they
+    // force the agent to return its proposal through a schema-validated
+    // function call instead of free-form prose (the legacy JSON-only-final-
+    // response contract was unreliable across models).
+    const openaiTools = [
+      ...toolList.tools.map((t) => ({
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: typeof t.description === 'string' ? t.description : '',
+          parameters: (t.inputSchema as Record<string, unknown> | undefined) ?? {
+            type: 'object',
+            properties: {},
+          },
         },
-      },
-    }));
+      })),
+      ...SUBMIT_TOOLS,
+    ];
 
     // 5. Build initial messages.
     const messages: OpenAiMessage[] = [
@@ -207,7 +217,10 @@ async function runAgentImpl(
       const toolCalls = assistantMsg.tool_calls ?? [];
 
       if (toolCalls.length === 0) {
-        // Final answer — parse FixProposal | NoFixProposable
+        // No submit_* call AND no other tool calls — agent dropped back to
+        // chat prose. parseFinalText degrades to NoFixProposable rather than
+        // throwing, so a misbehaving model files a clean issue instead of
+        // crashing the runner.
         const proposal = parseFinalText(assistantMsg.content ?? '');
         return {
           proposal,
@@ -235,6 +248,25 @@ async function runAgentImpl(
             role: 'tool',
             tool_call_id: call.id,
             content: `Error: tool arguments were not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          continue;
+        }
+
+        // Submit-tool intercept — terminates the loop with the parsed proposal.
+        // Validation errors are fed back as a tool message so the model can
+        // retry within the existing maxTurns gate.
+        if (isSubmitToolName(call.function.name)) {
+          const submit = parseSubmitArgs(call.function.name, args);
+          if (submit.ok) {
+            return {
+              proposal: submit.proposal,
+              stats: { usdSpent: 0, turnsUsed },
+            };
+          }
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: `Error: ${submit.error}`,
           });
           continue;
         }
@@ -314,17 +346,29 @@ function renderContextForAgent(context: ContextBundle): string {
   ].join('\n');
 }
 
+// Backward-compat fallback for content-only final messages. Primary path is
+// the submit_* tool intercept in the loop above. Parse failures and shape
+// mismatches degrade to NoFixProposable carrying the raw prose as evidence —
+// the orchestrator then files a no-fix-proposable issue instead of crashing.
 function parseFinalText(text: string): FixProposal | NoFixProposable {
-  // Strip Markdown code fences if present (e.g., ```json ... ```).
   const stripped = text
     .replace(/^\s*```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/i, '')
     .trim();
+  if (stripped.length === 0) {
+    return {
+      reason: 'no-fix-proposable',
+      evidence: 'Agent returned an empty final response and did not call submit_fix_proposal or submit_no_fix.',
+    };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripped);
-  } catch (err) {
-    throw new Error(`Agent returned non-JSON final text: ${err}`);
+  } catch {
+    return {
+      reason: 'no-fix-proposable',
+      evidence: `Agent returned a non-JSON final response and did not call submit_fix_proposal or submit_no_fix. Response excerpt: ${truncate(text, 1500)}`,
+    };
   }
   if (
     parsed !== null &&
@@ -353,7 +397,14 @@ function parseFinalText(text: string): FixProposal | NoFixProposable {
       };
     }
   }
-  throw new Error('Agent JSON does not match FixProposal or NoFixProposable shape');
+  return {
+    reason: 'no-fix-proposable',
+    evidence: `Agent returned JSON that does not match FixProposal or NoFixProposable shape and did not call submit_fix_proposal or submit_no_fix. Response excerpt: ${truncate(text, 1500)}`,
+  };
+}
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : `${s.slice(0, n)}…[truncated]`;
 }
 
 // Convenience: a default-named export that throws if anyone calls it directly
