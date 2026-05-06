@@ -68,6 +68,17 @@ export interface ApplyFixArgs {
                            //   so deploy gates (Vercel, Netlify) that verify the
                            //   commit-author → GitHub-account mapping accept the PR.
   botName?: string;        // pairs with botEmail; falls back to BOT_NAME.
+  workingDirectoryPrefix?: string;
+                           // Repo-relative path of cwd (e.g. 'frontend' for monorepos
+                           //   where the test app lives under a subdir). When set,
+                           //   passed to `git apply` as `--directory=<prefix>` so
+                           //   patch paths like `a/e2e/foo.spec.ts` resolve to
+                           //   `<prefix>/e2e/foo.spec.ts` against the index. Without
+                           //   this flag, git apply silently SKIPS the patch
+                           //   (exit 0, "Skipped patch") because the path doesn't
+                           //   exist relative to the repository root.
+                           //   Empty / omitted ⇒ no --directory flag (single-tree
+                           //   repos where cwd == workspace).
 }
 
 export interface ApplyFixResult {
@@ -138,9 +149,22 @@ export async function applyFix(args: ApplyFixArgs): Promise<ApplyFixResult> {
   //    from setup_command npm install) are NOT swept into the commit.
   //    Surfaced during 03.1-03 iteration 5 — fix replaces the prior `git apply --3way`
   //    + `git add -A` pair, which had been silently committing arbitrary worktree state.
+  //
+  //    `--directory=<workingDirectoryPrefix>` is required for monorepos where the
+  //    consumer's working_directory points to a subdir (e.g. `frontend/`). The
+  //    agent sees test paths relative to that subdir (`e2e/foo.spec.ts`) and emits
+  //    matching diff paths. Without --directory, git apply resolves these against
+  //    the repo root (`<repo>/e2e/foo.spec.ts`) which doesn't exist — and
+  //    SILENTLY SKIPS the patch with exit 0. Step 5 below catches the no-op but
+  //    the symptom is opaque without the prefix flag here.
+  const applyArgs = ['apply', '--3way', '--index'];
+  if (args.workingDirectoryPrefix && args.workingDirectoryPrefix.length > 0) {
+    applyArgs.push(`--directory=${args.workingDirectoryPrefix}`);
+  }
+  applyArgs.push(patchPath);
   const apply = await getExecOutput(
     'git',
-    ['apply', '--3way', '--index', patchPath],
+    applyArgs,
     { cwd: args.cwd, ignoreReturnCode: true },
   );
   if (apply.exitCode !== 0) {
